@@ -25,10 +25,13 @@ export function sanitizeUserProfile(
     ? (user.role as UserRole)
     : 'viewer';
 
+  const photoURL = user.photoURL?.trim() || undefined;
+
   return {
     uid,
     email,
     displayName,
+    photoURL,
     role,
     createdAt: user.createdAt ?? Date.now(),
     updatedAt: user.updatedAt,
@@ -60,4 +63,28 @@ export function getInitials(name?: string | null): string {
   const trimmed = name?.trim();
   if (!trimmed) return 'U';
   return trimmed.charAt(0).toUpperCase();
+}
+
+export function getPlaceholderAvatarUrl(
+  uid: string,
+  displayName: string,
+  size = 128,
+): string {
+  const seed = encodeURIComponent(displayName.trim() || uid);
+  return `https://ui-avatars.com/api/?name=${seed}&background=145A45&color=fff&size=${size}&bold=true`;
+}
+
+export function getUserAvatarUrl(
+  user: Pick<UserProfile, 'uid' | 'displayName' | 'photoURL'>,
+  size = 128,
+): string {
+  if (user.photoURL?.trim()) {
+    return user.photoURL.trim();
+  }
+  return getPlaceholderAvatarUrl(user.uid, user.displayName, size);
+}
+
+export function resolveAuthPhotoUrl(photoURL?: string | null): string | undefined {
+  const trimmed = photoURL?.trim();
+  return trimmed || undefined;
 }

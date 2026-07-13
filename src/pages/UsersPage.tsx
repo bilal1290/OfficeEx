@@ -11,7 +11,9 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Modal } from '../components/ui/Modal';
 import { Badge } from '../components/ui/Badge';
+import { UserAvatar } from '../components/ui/UserAvatar';
 import { formatDateTime } from '../lib/datetime';
+import { clsx } from '../lib/utils';
 import type { UserProfile, UserRole } from '../types';
 
 type RoleFilter = 'all' | UserRole;
@@ -22,6 +24,13 @@ const roleBadgeVariant = (role: UserRole) => {
   if (role === 'viewer') return 'warning';
   return 'default';
 };
+
+const FILTER_OPTIONS: Array<{ value: RoleFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'admin', label: 'Administrators' },
+  { value: 'project_owner', label: 'Project Owners' },
+  { value: 'viewer', label: 'Expense Viewers' },
+];
 
 export function UsersPage() {
   const { profile } = useAuth();
@@ -42,6 +51,16 @@ export function UsersPage() {
 
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const roleCounts = useMemo(
+    () => ({
+      all: users.length,
+      admin: users.filter((user) => user.role === 'admin').length,
+      project_owner: users.filter((user) => user.role === 'project_owner').length,
+      viewer: users.filter((user) => user.role === 'viewer').length,
+    }),
+    [users],
+  );
 
   const filteredUsers = useMemo(() => {
     if (roleFilter === 'all') return users;
@@ -132,83 +151,84 @@ export function UsersPage() {
   return (
     <div className="page">
       {error && <DataErrorBanner message={error} />}
-      <Card>
-        <CardHeader
-          title="Team"
-          subtitle={`${users.length} member${users.length === 1 ? '' : 's'} · manage roles and access`}
-          action={
-            <div className="card-header-actions">
-              <Button variant="secondary" onClick={() => { resetCreateForm(); setCreateMode('link-email'); setCreateModalOpen(true); }}>
-                <Link2 size={18} />
-                Link Existing
-              </Button>
-              <Button onClick={openCreate}>
-                <UserPlus size={18} />
-                Add User
-              </Button>
-            </div>
-          }
-        />
+      <Card className="team-card" padding={false}>
+        <div className="team-card-head">
+          <CardHeader
+            title="Team"
+            subtitle={`${users.length} member${users.length === 1 ? '' : 's'} · roles and access`}
+            action={
+              <div className="card-header-actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    resetCreateForm();
+                    setCreateMode('link-email');
+                    setCreateModalOpen(true);
+                  }}
+                >
+                  <Link2 size={18} />
+                  Link Existing
+                </Button>
+                <Button onClick={openCreate}>
+                  <UserPlus size={18} />
+                  Add User
+                </Button>
+              </div>
+            }
+          />
 
-        <div className="role-filter-tabs">
-          {(['all', 'admin', 'project_owner', 'viewer'] as RoleFilter[]).map(
-            (filterValue) => (
+          <div className="team-filters">
+            {FILTER_OPTIONS.map(({ value, label }) => (
               <button
-                key={filterValue}
+                key={value}
                 type="button"
-                className={`role-filter-tab ${roleFilter === filterValue ? 'active' : ''}`}
-                onClick={() => setRoleFilter(filterValue)}
+                className={clsx(
+                  'team-filter-pill',
+                  roleFilter === value && 'team-filter-pill-active',
+                )}
+                onClick={() => setRoleFilter(value)}
               >
-                {filterValue === 'all' ? 'All Users' : getRoleLabel(filterValue)}
+                <span>{label}</span>
+                <span className="team-filter-count">{roleCounts[value]}</span>
               </button>
-            ),
-          )}
+            ))}
+          </div>
         </div>
 
-        <div className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Joined</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="empty-cell">
-                    No users found for this role.
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((user) => (
-                  <tr key={user.uid}>
-                    <td>{user.displayName}</td>
-                    <td>{user.email}</td>
-                    <td>
-                      <Badge variant={roleBadgeVariant(user.role)}>
-                        {getRoleLabel(user.role)}
-                      </Badge>
-                    </td>
-                    <td>{formatDateTime(user.createdAt)}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => openEdit(user)}
-                        aria-label={`Edit ${user.displayName}`}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="team-list">
+          {filteredUsers.length === 0 ? (
+            <p className="team-empty">No users found for this role.</p>
+          ) : (
+            filteredUsers.map((user) => (
+              <article key={user.uid} className="team-member">
+                <div className="team-member-main">
+                  <UserAvatar user={user} size="md" />
+                  <div className="team-member-info">
+                    <p className="team-member-name">{user.displayName}</p>
+                    <p className="team-member-email">{user.email}</p>
+                  </div>
+                </div>
+
+                <div className="team-member-meta">
+                  <Badge variant={roleBadgeVariant(user.role)}>
+                    {getRoleLabel(user.role)}
+                  </Badge>
+                  <span className="team-member-joined">
+                    Joined {formatDateTime(user.createdAt)}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  className="team-member-edit"
+                  onClick={() => openEdit(user)}
+                  aria-label={`Edit ${user.displayName}`}
+                >
+                  <Pencil size={16} />
+                </button>
+              </article>
+            ))
+          )}
         </div>
       </Card>
 
@@ -307,8 +327,8 @@ export function UsersPage() {
             {createMode === 'create'
               ? USER_ROLES.find((item) => item.value === role)?.description
               : createMode === 'link-email'
-                ? 'Looks up the Firebase Auth account by email and adds a team profile so they appear in this list.'
-                : 'Use when email lookup is unavailable. Paste the UID from Firebase Console.'}
+                ? 'Looks up the Firebase Auth account by email and adds a team profile.'
+                : 'Paste the UID from Firebase Console when email lookup is unavailable.'}
           </p>
           {formError && <p className="auth-error">{formError}</p>}
         </form>
@@ -329,6 +349,15 @@ export function UsersPage() {
           </>
         }
       >
+        {editingUser && (
+          <div className="team-edit-preview">
+            <UserAvatar user={editingUser} size="lg" />
+            <div>
+              <p className="team-edit-preview-name">{editingUser.displayName}</p>
+              <p className="team-edit-preview-email">{editingUser.email}</p>
+            </div>
+          </div>
+        )}
         <form onSubmit={handleUpdate} className="form-grid">
           <Input
             label="Full Name"

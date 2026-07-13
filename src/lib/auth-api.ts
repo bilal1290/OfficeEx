@@ -156,6 +156,7 @@ export async function ensureUserProfile(
   email: string,
   displayName: string,
   isFirstUser: boolean,
+  photoURL?: string,
 ): Promise<UserProfile> {
   if (!db) {
     throw new Error('Database is not configured');
@@ -166,6 +167,7 @@ export async function ensureUserProfile(
     uid,
     email,
     displayName,
+    photoURL,
     role: isFirstUser ? 'admin' : 'viewer',
     createdAt: Date.now(),
   };

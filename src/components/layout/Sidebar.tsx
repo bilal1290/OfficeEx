@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { getRoleLabel } from '../../lib/permissions';
 import { clsx } from '../../lib/utils';
-import { getInitials } from '../../lib/users';
+import { UserAvatar } from '../ui/UserAvatar';
 
 export function Sidebar() {
   const { profile, permissions } = useAuth();
@@ -92,9 +92,11 @@ export function Sidebar() {
 
       <div className="sidebar-footer">
         <div className="sidebar-user">
-          <div className="sidebar-avatar">
-            {getInitials(profile?.displayName)}
-          </div>
+          {profile ? (
+            <UserAvatar user={profile} size="md" />
+          ) : (
+            <div className="sidebar-avatar">U</div>
+          )}
           <div>
             <p className="sidebar-user-name">{profile?.displayName}</p>
             <p className="sidebar-user-role">

@@ -18,7 +18,7 @@ import { ensureUserProfile } from '../lib/auth-api';
 import { completeGoogleRedirectSignIn, signInWithGoogle as firebaseGoogleSignIn } from '../lib/google-auth';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import { getPermissions, type Permissions } from '../lib/permissions';
-import { sanitizeUserProfile } from '../lib/users';
+import { resolveAuthPhotoUrl, sanitizeUserProfile } from '../lib/users';
 import type { UserProfile, UserRole } from '../types';
 
 interface AuthContextValue {
@@ -45,9 +45,27 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | null> {
   if (!db) return null;
 
+  const photoURL = resolveAuthPhotoUrl(firebaseUser.photoURL);
   const snapshot = await get(ref(db, `users/${firebaseUser.uid}`));
+
   if (snapshot.exists()) {
-    return sanitizeUserProfile(firebaseUser.uid, snapshot.val() as UserProfile);
+    const existing = sanitizeUserProfile(
+      firebaseUser.uid,
+      snapshot.val() as UserProfile,
+    );
+    if (!existing) return null;
+
+    if (photoURL && existing.photoURL !== photoURL) {
+      const updated: UserProfile = {
+        ...existing,
+        photoURL,
+        updatedAt: Date.now(),
+      };
+      await set(ref(db, `users/${firebaseUser.uid}`), updated);
+      return updated;
+    }
+
+    return existing;
   }
 
   const usersSnapshot = await get(ref(db, 'users'));
@@ -62,6 +80,7 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
     firebaseUser.email ?? '',
     displayName,
     isFirstUser,
+    photoURL,
   );
 }
 

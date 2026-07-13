@@ -21,6 +21,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { getRoleLabel } from '../../lib/permissions';
 import { clsx } from '../../lib/utils';
 import { Button } from '../ui/Button';
+import { UserAvatar } from '../ui/UserAvatar';
 
 interface NavItem {
   to: string;
@@ -132,6 +133,14 @@ export function TopNav() {
   const userInitial =
     profile?.displayName?.charAt(0)?.toUpperCase() ?? 'U';
 
+  const profileAvatar = profile ? (
+    <UserAvatar user={profile} size="md" />
+  ) : (
+    <div className="topnav-avatar-mobile" aria-hidden>
+      {userInitial}
+    </div>
+  );
+
   const mobileDock = createPortal(
     <nav className="mobile-dock" aria-label="Mobile navigation">
       <div className="mobile-dock-inner">
@@ -202,7 +211,11 @@ export function TopNav() {
               </button>
             </div>
             <div className="nav-hub-user-card">
-              <div className="nav-hub-avatar">{userInitial}</div>
+              {profile ? (
+                <UserAvatar user={profile} size="lg" />
+              ) : (
+                <div className="nav-hub-avatar">{userInitial}</div>
+              )}
               <div>
                 <p className="nav-hub-user-name">{profile?.displayName}</p>
                 <p className="nav-hub-user-role">
@@ -272,10 +285,13 @@ export function TopNav() {
 
           <div className="topnav-actions">
             <div className="topnav-user topnav-user-desktop">
-              <span className="topnav-user-name">{profile?.displayName}</span>
-              <span className="topnav-user-role">
-                {profile?.role ? getRoleLabel(profile.role) : 'User'}
-              </span>
+              {profile && <UserAvatar user={profile} size="sm" className="topnav-user-avatar" />}
+              <div>
+                <span className="topnav-user-name">{profile?.displayName}</span>
+                <span className="topnav-user-role">
+                  {profile?.role ? getRoleLabel(profile.role) : 'User'}
+                </span>
+              </div>
             </div>
             <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Toggle theme">
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
@@ -289,8 +305,8 @@ export function TopNav() {
             >
               <LogOut size={18} />
             </Button>
-            <div className="topnav-avatar-mobile" aria-hidden>
-              {userInitial}
+            <div className="topnav-avatar-mobile-wrap" aria-hidden>
+              {profileAvatar}
             </div>
           </div>
         </div>
