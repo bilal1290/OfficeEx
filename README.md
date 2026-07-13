@@ -4,7 +4,7 @@ A modern React dashboard for managing company finances with Firebase Realtime Da
 
 ## Features
 
-- **Authentication** — Secure email/password sign-in with role-based access (Admin & Project Owner)
+- **Authentication** — Email/password and Google sign-in with role-based access (Admin, Project Owner & Expense Viewer)
 - **Project Income** — Project owners log monthly income; company share (60%) is calculated automatically
 - **Expense Management** — Project owners manage personal expenses; admins manage office expenses
 - **Dashboard** — Total income, expenses, net balance, profit/loss with interactive charts
@@ -26,7 +26,7 @@ A modern React dashboard for managing company finances with Firebase Realtime Da
 
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Create a new project (or use an existing one)
-3. Enable **Authentication** → Email/Password provider
+3. Enable **Authentication** → **Email/Password** and **Google** providers
 4. Create **Realtime Database** (Build → Realtime Database → Create Database)
 5. Register a **Web App** and copy the config values
 
@@ -59,6 +59,8 @@ npx -y firebase-tools@latest login
 npx -y firebase-tools@latest use --add
 npx -y firebase-tools@latest deploy --only database,auth
 ```
+
+> **Google sign-in:** `firebase.json` includes Google provider config for OfficeEx. Deploying `auth` enables Google OAuth for your project. For local dev, ensure `localhost` is in Firebase Console → Authentication → Settings → **Authorized domains** (no `http://` or port).
 
 ### 4. Run Locally
 

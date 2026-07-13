@@ -13,6 +13,19 @@ export interface Permissions {
   canViewIncomeOnDashboard: boolean;
 }
 
+const NO_PERMISSIONS: Permissions = {
+  canViewIncome: false,
+  canManageUsers: false,
+  canManageOwnerExpenses: false,
+  canAccessOfficeExpenses: false,
+  canCreateOfficeExpenses: false,
+  canEditOfficeExpenses: false,
+  canDeleteOfficeExpenses: false,
+  canUpdateFixedExpenses: false,
+  canViewExpenseTransactions: false,
+  canViewIncomeOnDashboard: false,
+};
+
 export function getPermissions(role?: UserRole): Permissions {
   switch (role) {
     case 'admin':
@@ -34,7 +47,7 @@ export function getPermissions(role?: UserRole): Permissions {
         canManageUsers: false,
         canManageOwnerExpenses: false,
         canAccessOfficeExpenses: true,
-        canCreateOfficeExpenses: false,
+        canCreateOfficeExpenses: true,
         canEditOfficeExpenses: true,
         canDeleteOfficeExpenses: false,
         canUpdateFixedExpenses: true,
@@ -42,7 +55,6 @@ export function getPermissions(role?: UserRole): Permissions {
         canViewIncomeOnDashboard: false,
       };
     case 'project_owner':
-    default:
       return {
         canViewIncome: true,
         canManageUsers: false,
@@ -55,6 +67,8 @@ export function getPermissions(role?: UserRole): Permissions {
         canViewExpenseTransactions: true,
         canViewIncomeOnDashboard: true,
       };
+    default:
+      return NO_PERMISSIONS;
   }
 }
 

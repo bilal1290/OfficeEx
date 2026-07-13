@@ -76,7 +76,7 @@ export const USER_ROLES: {
   {
     value: 'viewer',
     label: 'Expense Viewer',
-    description: 'View and update office expenses only (no income access)',
+    description: 'View, add, and update office & fixed expenses (no income access)',
   },
 ];
 

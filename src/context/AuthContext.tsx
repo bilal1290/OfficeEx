@@ -14,8 +14,11 @@ import {
   type User,
 } from 'firebase/auth';
 import { get, ref, set } from 'firebase/database';
+import { ensureUserProfile } from '../lib/auth-api';
+import { completeGoogleRedirectSignIn, signInWithGoogle as firebaseGoogleSignIn } from '../lib/google-auth';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import { getPermissions, type Permissions } from '../lib/permissions';
+import { sanitizeUserProfile } from '../lib/users';
 import type { UserProfile, UserRole } from '../types';
 
 interface AuthContextValue {
@@ -23,6 +26,7 @@ interface AuthContextValue {
   profile: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   register: (
     email: string,
     password: string,
@@ -37,6 +41,29 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | null> {
+  if (!db) return null;
+
+  const snapshot = await get(ref(db, `users/${firebaseUser.uid}`));
+  if (snapshot.exists()) {
+    return sanitizeUserProfile(firebaseUser.uid, snapshot.val() as UserProfile);
+  }
+
+  const usersSnapshot = await get(ref(db, 'users'));
+  const isFirstUser = !usersSnapshot.exists();
+  const displayName =
+    firebaseUser.displayName?.trim() ||
+    firebaseUser.email?.split('@')[0] ||
+    'Team member';
+
+  return ensureUserProfile(
+    firebaseUser.uid,
+    firebaseUser.email ?? '',
+    displayName,
+    isFirstUser,
+  );
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -62,14 +89,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const timeoutId = window.setTimeout(finishLoading, 8000);
 
+    void completeGoogleRedirectSignIn(auth).catch((error) => {
+      console.error('Google redirect sign-in error:', error);
+    });
+
     const unsubscribe = onAuthStateChanged(
       auth,
       async (firebaseUser) => {
         setUser(firebaseUser);
         if (firebaseUser) {
           try {
-            const snapshot = await get(ref(db!, `users/${firebaseUser.uid}`));
-            setProfile(snapshot.exists() ? (snapshot.val() as UserProfile) : null);
+            const nextProfile = await loadOrCreateProfile(firebaseUser);
+            setProfile(nextProfile);
           } catch (error) {
             console.error('Failed to load user profile:', error);
             setProfile(null);
@@ -81,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       (error) => {
         console.error('Auth state error:', error);
+        setProfile(null);
         finishLoading();
       },
     );
@@ -94,6 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     if (!auth) throw new Error('Firebase Auth is not configured');
     await signInWithEmailAndPassword(auth, email, password);
+  };
+
+  const loginWithGoogle = async () => {
+    if (!auth) throw new Error('Firebase Auth is not configured');
+    await firebaseGoogleSignIn(auth);
   };
 
   const register = async (
@@ -122,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     await set(ref(db, `users/${credential.user.uid}`), userProfile);
-    setProfile(userProfile);
+    setProfile(sanitizeUserProfile(credential.user.uid, userProfile));
   };
 
   const logout = async () => {
@@ -137,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         loading,
         login,
+        loginWithGoogle,
         register,
         logout,
         role,

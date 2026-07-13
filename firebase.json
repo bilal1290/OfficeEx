@@ -18,7 +18,16 @@
   },
   "auth": {
     "providers": {
-      "emailPassword": true
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "OfficeEx",
+        "supportEmail": "bilal.sqat@gmail.com",
+        "authorizedRedirectUris": [
+          "https://expense-b68af.firebaseapp.com",
+          "https://expense-b68af.web.app",
+          "http://localhost"
+        ]
+      }
     }
   }
 }

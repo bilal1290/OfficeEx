@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
+import { AuthDivider, GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -64,6 +65,10 @@ export function RegisterPage() {
           <p>Join OfficeEx Finance Manager</p>
         </div>
 
+        <GoogleSignInButton label="Sign up with Google" onError={setError} />
+
+        <AuthDivider />
+
         <form onSubmit={handleSubmit} className="auth-form">
           <Input
             label="Full Name"
@@ -100,7 +105,7 @@ export function RegisterPage() {
           </p>
           {error && <p className="auth-error">{error}</p>}
           <Button type="submit" disabled={submitting} className="auth-submit">
-            {submitting ? 'Creating account...' : 'Create Account'}
+            {submitting ? 'Creating account...' : 'Create Account with Email'}
           </Button>
         </form>
 

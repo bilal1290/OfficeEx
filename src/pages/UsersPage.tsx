@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Pencil, UserPlus } from 'lucide-react';
+import { Link2, Pencil, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUsers } from '../hooks/useUsers';
 import { USER_ROLES } from '../lib/constants';
 import { getRoleLabel } from '../lib/permissions';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
+import { DataErrorBanner } from '../components/ui/DataErrorBanner';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Modal } from '../components/ui/Modal';
@@ -14,6 +15,7 @@ import { formatDateTime } from '../lib/datetime';
 import type { UserProfile, UserRole } from '../types';
 
 type RoleFilter = 'all' | UserRole;
+type CreateMode = 'create' | 'link-email' | 'link-uid';
 
 const roleBadgeVariant = (role: UserRole) => {
   if (role === 'admin') return 'info';
@@ -23,19 +25,22 @@ const roleBadgeVariant = (role: UserRole) => {
 
 export function UsersPage() {
   const { profile } = useAuth();
-  const { users, loading, updateUser, addUser } = useUsers();
+  const { users, loading, error, updateUser, addUser, linkUserByEmail, linkUserByUid } =
+    useUsers();
 
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [createMode, setCreateMode] = useState<CreateMode>('create');
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [uid, setUid] = useState('');
   const [role, setRole] = useState<UserRole>('project_owner');
 
-  const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const filteredUsers = useMemo(() => {
@@ -47,8 +52,10 @@ export function UsersPage() {
     setDisplayName('');
     setEmail('');
     setPassword('');
+    setUid('');
     setRole('project_owner');
-    setError('');
+    setFormError('');
+    setCreateMode('create');
   };
 
   const openCreate = () => {
@@ -61,23 +68,32 @@ export function UsersPage() {
     setDisplayName(user.displayName);
     setEmail(user.email);
     setRole(user.role);
-    setError('');
+    setFormError('');
     setEditModalOpen(true);
   };
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError('');
+    setFormError('');
     setSubmitting(true);
 
     try {
-      if (password.length < 6) {
-        throw new Error('Password must be at least 6 characters.');
+      if (createMode === 'create') {
+        if (password.length < 6) {
+          throw new Error('Password must be at least 6 characters.');
+        }
+        await addUser(displayName, email, password, role);
+      } else if (createMode === 'link-email') {
+        await linkUserByEmail(email, displayName, role);
+      } else {
+        if (!uid.trim()) {
+          throw new Error('Firebase UID is required.');
+        }
+        await linkUserByUid(uid.trim(), email, displayName, role);
       }
-      await addUser(displayName, email, password, role);
       setCreateModalOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create user.');
+      setFormError(err instanceof Error ? err.message : 'Failed to save user.');
     } finally {
       setSubmitting(false);
     }
@@ -87,7 +103,7 @@ export function UsersPage() {
     event.preventDefault();
     if (!editingUser) return;
 
-    setError('');
+    setFormError('');
     setSubmitting(true);
 
     try {
@@ -99,7 +115,7 @@ export function UsersPage() {
       setEditModalOpen(false);
       setEditingUser(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update user.');
+      setFormError(err instanceof Error ? err.message : 'Failed to update user.');
     } finally {
       setSubmitting(false);
     }
@@ -115,15 +131,22 @@ export function UsersPage() {
 
   return (
     <div className="page">
+      {error && <DataErrorBanner message={error} />}
       <Card>
         <CardHeader
-          title="User Management"
-          subtitle="Manage administrators, project owners, and expense viewers in one place"
+          title="Team"
+          subtitle={`${users.length} member${users.length === 1 ? '' : 's'} · manage roles and access`}
           action={
-            <Button onClick={openCreate}>
-              <UserPlus size={18} />
-              Add User
-            </Button>
+            <div className="card-header-actions">
+              <Button variant="secondary" onClick={() => { resetCreateForm(); setCreateMode('link-email'); setCreateModalOpen(true); }}>
+                <Link2 size={18} />
+                Link Existing
+              </Button>
+              <Button onClick={openCreate}>
+                <UserPlus size={18} />
+                Add User
+              </Button>
+            </div>
           }
         />
 
@@ -192,18 +215,52 @@ export function UsersPage() {
       <Modal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        title="Add User"
+        title={
+          createMode === 'create'
+            ? 'Add User'
+            : createMode === 'link-email'
+              ? 'Link Existing Account'
+              : 'Link by Firebase UID'
+        }
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreateModalOpen(false)}>
               Cancel
             </Button>
             <Button onClick={handleCreate} disabled={submitting}>
-              {submitting ? 'Creating...' : 'Create User'}
+              {submitting
+                ? 'Saving...'
+                : createMode === 'create'
+                  ? 'Create User'
+                  : 'Link to Team'}
             </Button>
           </>
         }
       >
+        <div className="modal-tabs">
+          <button
+            type="button"
+            className={`modal-tab ${createMode === 'create' ? 'active' : ''}`}
+            onClick={() => setCreateMode('create')}
+          >
+            Create new
+          </button>
+          <button
+            type="button"
+            className={`modal-tab ${createMode === 'link-email' ? 'active' : ''}`}
+            onClick={() => setCreateMode('link-email')}
+          >
+            Link by email
+          </button>
+          <button
+            type="button"
+            className={`modal-tab ${createMode === 'link-uid' ? 'active' : ''}`}
+            onClick={() => setCreateMode('link-uid')}
+          >
+            Link by UID
+          </button>
+        </div>
+
         <form onSubmit={handleCreate} className="form-grid">
           <Input
             label="Full Name"
@@ -218,14 +275,25 @@ export function UsersPage() {
             onChange={(event) => setEmail(event.target.value)}
             required
           />
-          <Input
-            label="Temporary Password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            minLength={6}
-          />
+          {createMode === 'create' && (
+            <Input
+              label="Temporary Password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={6}
+            />
+          )}
+          {createMode === 'link-uid' && (
+            <Input
+              label="Firebase UID"
+              value={uid}
+              onChange={(event) => setUid(event.target.value)}
+              required
+              placeholder="Copy from Firebase Console → Authentication"
+            />
+          )}
           <Select
             label="Role"
             options={USER_ROLES.map((item) => ({
@@ -236,9 +304,13 @@ export function UsersPage() {
             onChange={(event) => setRole(event.target.value as UserRole)}
           />
           <p className="form-hint">
-            {USER_ROLES.find((item) => item.value === role)?.description}
+            {createMode === 'create'
+              ? USER_ROLES.find((item) => item.value === role)?.description
+              : createMode === 'link-email'
+                ? 'Looks up the Firebase Auth account by email and adds a team profile so they appear in this list.'
+                : 'Use when email lookup is unavailable. Paste the UID from Firebase Console.'}
           </p>
-          {error && <p className="auth-error">{error}</p>}
+          {formError && <p className="auth-error">{formError}</p>}
         </form>
       </Modal>
 
@@ -286,7 +358,7 @@ export function UsersPage() {
               You cannot change your own role. Ask another admin if needed.
             </p>
           )}
-          {error && <p className="auth-error">{error}</p>}
+          {formError && <p className="auth-error">{formError}</p>}
         </form>
       </Modal>
     </div>

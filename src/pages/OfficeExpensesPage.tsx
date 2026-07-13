@@ -67,7 +67,6 @@ export function OfficeExpensesPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const visibleExpenses = filterOfficeExpenses(expenses, filter);
-  const isEditOnly = permissions.canEditOfficeExpenses && !permissions.canCreateOfficeExpenses;
 
   const monthForFixed =
     filter.month === 'all' ? new Date().getMonth() + 1 : filter.month;
@@ -176,8 +175,8 @@ export function OfficeExpensesPage() {
         <CardHeader
           title="Additional Office Expenses"
           subtitle={
-            isEditOnly
-              ? 'View and update individual office expense records'
+            permissions.canCreateOfficeExpenses && !permissions.canDeleteOfficeExpenses
+              ? 'Add and update office expense records for any period'
               : 'Manage company-wide operational expenses'
           }
           action={

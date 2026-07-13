@@ -1,9 +1,11 @@
 {
   "rules": {
     "users": {
+      ".read": "auth != null",
+      ".indexOn": ["role", "email"],
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['uid', 'email', 'displayName', 'role', 'createdAt']) && newData.child('uid').val() === $uid"
       }
     },
     "incomes": {

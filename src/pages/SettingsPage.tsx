@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Building2,
   Coins,
+  Fingerprint,
   Moon,
   ScrollText,
   Shield,
@@ -161,6 +162,13 @@ export function SettingsPage() {
                   </Badge>
                 </div>
               </div>
+              <div className="settings-field">
+                <Fingerprint size={18} className="settings-field-icon" />
+                <div>
+                  <p className="settings-label">User ID</p>
+                  <p className="settings-value settings-value-mono">{profile?.uid}</p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -262,7 +270,7 @@ export function SettingsPage() {
                   for the same period.
                 </li>
                 <li>
-                  Expense viewers can view and update office expenses only — no
+                  Expense viewers can add and update office & fixed expenses — no
                   income access.
                 </li>
                 <li>
