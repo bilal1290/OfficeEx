@@ -4,13 +4,18 @@ import { useAuth } from '../../context/AuthContext';
 import { useFilter } from '../../context/FilterContext';
 import { useCurrency } from '../../context/CurrencyContext';
 import { useEmployees } from '../../hooks/useEmployees';
+import { useUsers } from '../../hooks/useUsers';
 import {
   getFixedExpenseId,
   useFixedExpenses,
 } from '../../hooks/useFixedExpenses';
 import { getEmployeeLabel } from '../../lib/employees';
+import { emailPaidPayslips } from '../../lib/payslip-email';
+import { resolvePayslipEmailTargets } from '../../lib/payslip-email-targets';
 import {
   buildSalaryEntries,
+  computeLeaveDeduction,
+  computeNetSalary,
   countPaidSalaries,
   sumAllSalaries,
   sumPaidSalaries,
@@ -30,8 +35,9 @@ export function SalarySection() {
   const { filter } = useFilter();
   const { formatNative, formatDisplay, convertToDisplay, displayCurrency } =
     useCurrency();
-  const { activeEmployees, loading: employeesLoading, error: employeesError, addEmployee } =
+  const { activeEmployees, employees, loading: employeesLoading, error: employeesError, addEmployee } =
     useEmployees();
+  const { users } = useUsers();
   const { records, loading: fixedLoading, saveSalaryEntries } = useFixedExpenses();
 
   const month = filter.month === 'all' ? new Date().getMonth() + 1 : filter.month;
@@ -50,16 +56,19 @@ export function SalarySection() {
   const [employeeForm, setEmployeeForm] = useState({
     name: '',
     title: '',
+    email: '',
     monthlySalary: '',
     currency: displayCurrency as CurrencyCode,
   });
   const [employeeError, setEmployeeError] = useState('');
+  const [emailOnSave, setEmailOnSave] = useState(true);
+  const [emailStatus, setEmailStatus] = useState('');
 
   useEffect(() => {
-    setEntries(buildSalaryEntries(activeEmployees, fixedRecord?.salaryEntries));
+    setEntries(buildSalaryEntries(activeEmployees, fixedRecord?.salaryEntries, month, year));
     setCurrency(fixedRecord?.currency ?? displayCurrency);
     setSaved(false);
-  }, [activeEmployees, fixedRecord, displayCurrency]);
+  }, [activeEmployees, fixedRecord, displayCurrency, month, year]);
 
   const paidTotal = useMemo(() => sumPaidSalaries(entries), [entries]);
   const payrollTotal = useMemo(() => sumAllSalaries(entries), [entries]);
@@ -85,9 +94,80 @@ export function SalarySection() {
     setEntries((current) =>
       current.map((entry) =>
         entry.employeeId === employeeId
-          ? { ...entry, amount: Number.isFinite(amount) ? amount : 0 }
+          ? {
+              ...entry,
+              baseSalary: Number.isFinite(amount) ? amount : 0,
+              amount: computeNetSalary(
+                {
+                  ...entry,
+                  baseSalary: Number.isFinite(amount) ? amount : 0,
+                },
+                month,
+                year,
+              ),
+            }
           : entry,
       ),
+    );
+    setSaved(false);
+  };
+
+  const updateLeaveDays = (employeeId: string, value: string) => {
+    if (!permissions.canUpdateFixedExpenses) return;
+    const leaveDays = value === '' ? 0 : Math.max(0, parseInt(value, 10) || 0);
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.employeeId !== employeeId) return entry;
+        const leaveDeduction = computeLeaveDeduction(
+          entry.baseSalary,
+          leaveDays,
+          month,
+          year,
+        );
+        const next = { ...entry, leaveDays, leaveDeduction };
+        return {
+          ...next,
+          amount: computeNetSalary(next, month, year),
+        };
+      }),
+    );
+    setSaved(false);
+  };
+
+  const updateBonus = (employeeId: string, value: string) => {
+    if (!permissions.canUpdateFixedExpenses) return;
+    const bonus = value === '' ? 0 : parseFloat(value);
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.employeeId !== employeeId) return entry;
+        const next = {
+          ...entry,
+          bonus: Number.isFinite(bonus) ? bonus : 0,
+        };
+        return {
+          ...next,
+          amount: computeNetSalary(next, month, year),
+        };
+      }),
+    );
+    setSaved(false);
+  };
+
+  const updateOtherDeductions = (employeeId: string, value: string) => {
+    if (!permissions.canUpdateFixedExpenses) return;
+    const otherDeductions = value === '' ? 0 : parseFloat(value);
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.employeeId !== employeeId) return entry;
+        const next = {
+          ...entry,
+          otherDeductions: Number.isFinite(otherDeductions) ? otherDeductions : 0,
+        };
+        return {
+          ...next,
+          amount: computeNetSalary(next, month, year),
+        };
+      }),
     );
     setSaved(false);
   };
@@ -106,9 +186,44 @@ export function SalarySection() {
     if (!profile || !permissions.canUpdateFixedExpenses) return;
 
     setSubmitting(true);
+    setEmailStatus('');
     try {
+      const previousEntries = fixedRecord?.salaryEntries ?? [];
       await saveSalaryEntries(year, month, entries, profile.uid, currency);
       setSaved(true);
+
+      if (emailOnSave) {
+        const targets = await resolvePayslipEmailTargets(
+          year,
+          month,
+          entries,
+          previousEntries,
+        );
+
+        if (targets.size > 0) {
+          const result = await emailPaidPayslips({
+            entries,
+            employees,
+            users,
+            year,
+            month,
+            currency,
+            onlyEmployeeIds: targets,
+          });
+
+          const parts: string[] = [];
+          if (result.sent.length > 0) {
+            parts.push(`Emailed ${result.sent.length} payslip${result.sent.length === 1 ? '' : 's'}`);
+          }
+          if (result.skipped.length > 0) {
+            parts.push(`${result.skipped.length} skipped (no email)`);
+          }
+          if (result.failed.length > 0) {
+            parts.push(`${result.failed.length} failed`);
+          }
+          setEmailStatus(parts.join(' · '));
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -133,12 +248,14 @@ export function SalarySection() {
       await addEmployee({
         name: employeeForm.name,
         title: employeeForm.title,
+        email: employeeForm.email,
         monthlySalary: amount,
         currency: employeeForm.currency,
       });
       setEmployeeForm({
         name: '',
         title: '',
+        email: '',
         monthlySalary: '',
         currency: displayCurrency,
       });
@@ -187,8 +304,8 @@ export function SalarySection() {
         {employeesError && <DataErrorBanner message={employeesError} />}
 
         <p className="salary-section-hint">
-          Only checked (paid) salaries count toward this month&apos;s payroll total.
-          Amounts follow the filter month and year above.
+          Set base salary, leave days, bonuses, and deductions. Net amount is calculated
+          automatically and only checked (paid) salaries count toward payroll totals.
         </p>
 
         <div className="salary-section-toolbar">
@@ -213,6 +330,16 @@ export function SalarySection() {
               value={currency}
               onChange={setCurrency}
             />
+          )}
+          {permissions.canUpdateFixedExpenses && (
+            <label className="salary-email-toggle">
+              <input
+                type="checkbox"
+                checked={emailOnSave}
+                onChange={(event) => setEmailOnSave(event.target.checked)}
+              />
+              <span>Email paid invoices to employees</span>
+            </label>
           )}
         </div>
 
@@ -276,21 +403,69 @@ export function SalarySection() {
                     )}
                   </div>
 
+                  <div className="salary-checklist-breakdown">
+                    {permissions.canUpdateFixedExpenses ? (
+                      <>
+                        <Input
+                          label="Base salary"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={entry.baseSalary || ''}
+                          onChange={(event) =>
+                            updateAmount(entry.employeeId, event.target.value)
+                          }
+                        />
+                        <Input
+                          label="Leave days"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={entry.leaveDays || ''}
+                          onChange={(event) =>
+                            updateLeaveDays(entry.employeeId, event.target.value)
+                          }
+                        />
+                        <Input
+                          label="Bonus"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={entry.bonus || ''}
+                          onChange={(event) =>
+                            updateBonus(entry.employeeId, event.target.value)
+                          }
+                        />
+                        <Input
+                          label="Other deductions"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={entry.otherDeductions || ''}
+                          onChange={(event) =>
+                            updateOtherDeductions(entry.employeeId, event.target.value)
+                          }
+                        />
+                      </>
+                    ) : (
+                      <div className="salary-readonly-grid">
+                        <span>Base: {formatNative(entry.baseSalary, currency)}</span>
+                        <span>Leave: {entry.leaveDays}d (−{formatNative(entry.leaveDeduction, currency)})</span>
+                        <span>Bonus: {formatNative(entry.bonus, currency)}</span>
+                        <span>Deductions: {formatNative(entry.otherDeductions, currency)}</span>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="salary-checklist-amount">
                     {permissions.canUpdateFixedExpenses ? (
-                      <Input
-                        label="Amount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={entry.amount || ''}
-                        onChange={(event) =>
-                          updateAmount(entry.employeeId, event.target.value)
-                        }
-                      />
+                      <div className="salary-net-preview">
+                        <span className="salary-amount-label">Net payable</span>
+                        <strong>{formatNative(entry.amount, currency)}</strong>
+                      </div>
                     ) : (
                       <>
-                        <span className="salary-amount-label">Amount</span>
+                        <span className="salary-amount-label">Net payable</span>
                         <strong>{formatNative(entry.amount, currency)}</strong>
                       </>
                     )}
@@ -312,6 +487,7 @@ export function SalarySection() {
         {saved && (
           <p className="fixed-expenses-saved">Salary checklist saved for {periodLabel}</p>
         )}
+        {emailStatus && <p className="salary-email-status">{emailStatus}</p>}
       </Card>
 
       <Modal
@@ -347,6 +523,15 @@ export function SalarySection() {
               setEmployeeForm({ ...employeeForm, title: event.target.value })
             }
             placeholder="e.g. Developer"
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={employeeForm.email}
+            onChange={(event) =>
+              setEmployeeForm({ ...employeeForm, email: event.target.value })
+            }
+            placeholder="payslip@company.com"
           />
           <CurrencySelect
             value={employeeForm.currency}

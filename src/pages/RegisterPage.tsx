@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { Building2 } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
+import { AuthFooterLink, AuthShell } from '../components/auth/AuthShell';
 import { AuthDivider, GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Card } from '../components/ui/Card';
+import { clsx } from '../lib/utils';
+
+type AccountKind = 'team' | 'employee';
 
 export function RegisterPage() {
-  const { register, user, loading } = useAuth();
+  const { register, user, profile, loading } = useAuth();
+  const [accountKind, setAccountKind] = useState<AccountKind>('team');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,21 +21,26 @@ export function RegisterPage() {
 
   if (loading) {
     return (
-      <div className="auth-page">
+      <div className="auth-shell auth-shell-loading">
         <div className="loading-screen">
           <div className="spinner" />
-          <p>Loading...</p>
         </div>
       </div>
     );
   }
 
-  if (user) {
+  if (user && profile) {
+    if (profile.accountStatus === 'pending' || profile.accountStatus === 'rejected') {
+      return <Navigate to="/pending" replace />;
+    }
+    if (profile.role === 'employee') {
+      return <Navigate to="/pending" replace />;
+    }
     return <Navigate to="/" replace />;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
 
     if (password !== confirmPassword) {
@@ -46,7 +54,7 @@ export function RegisterPage() {
 
     setSubmitting(true);
     try {
-      await register(email, password, displayName);
+      await register(email, password, displayName, accountKind === 'employee');
     } catch {
       setError('Registration failed. Email may already be in use.');
     } finally {
@@ -55,64 +63,91 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="auth-page">
-      <Card className="auth-card" padding>
-        <div className="auth-brand">
-          <div className="auth-logo">
-            <Building2 size={32} />
-          </div>
-          <h1>Create account</h1>
-          <p>Join OfficeEx Finance Manager</p>
-        </div>
+    <AuthShell
+      title="Create account"
+      subtitle="Choose how you will use OfficeEx"
+      footer={
+        <AuthFooterLink
+          prompt="Already registered?"
+          linkLabel="Sign in"
+          to="/login"
+        />
+      }
+    >
+      <div className="auth-kind-toggle" role="tablist" aria-label="Account type">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={accountKind === 'team'}
+          className={clsx('auth-kind-btn', accountKind === 'team' && 'active')}
+          onClick={() => setAccountKind('team')}
+        >
+          Team member
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={accountKind === 'employee'}
+          className={clsx('auth-kind-btn', accountKind === 'employee' && 'active')}
+          onClick={() => setAccountKind('employee')}
+        >
+          Employee
+        </button>
+      </div>
 
-        <GoogleSignInButton label="Sign up with Google" onError={setError} />
+      <p className="auth-kind-hint">
+        {accountKind === 'employee'
+          ? 'Employee accounts stay pending until an administrator links you to the payroll roster and verifies access.'
+          : 'Team accounts stay pending until an administrator assigns your role and approves access.'}
+      </p>
 
-        <AuthDivider />
+      {accountKind === 'team' && (
+        <>
+          <GoogleSignInButton label="Sign up with Google" onError={setError} />
+          <AuthDivider />
+        </>
+      )}
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          <Input
-            label="Full Name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            required
-          />
-          <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-          <Input
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="new-password"
-          />
-          <Input
-            label="Confirm Password"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            autoComplete="new-password"
-          />
-          <p className="auth-hint">
-            The first registered user becomes the company administrator.
-          </p>
-          {error && <p className="auth-error">{error}</p>}
-          <Button type="submit" disabled={submitting} className="auth-submit">
-            {submitting ? 'Creating account...' : 'Create Account with Email'}
-          </Button>
-        </form>
-
-        <p className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
-        </p>
-      </Card>
-    </div>
+      <form onSubmit={handleSubmit} className="auth-form">
+        <Input
+          label="Full name"
+          value={displayName}
+          onChange={(event) => setDisplayName(event.target.value)}
+          required
+        />
+        <Input
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          required
+          autoComplete="email"
+        />
+        <Input
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+          autoComplete="new-password"
+        />
+        <Input
+          label="Confirm password"
+          type="password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          required
+          autoComplete="new-password"
+        />
+        {error && <p className="auth-error">{error}</p>}
+        <Button type="submit" disabled={submitting} className="auth-submit">
+          {submitting
+            ? 'Creating account...'
+            : accountKind === 'employee'
+              ? 'Request employee access'
+              : 'Create account'}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

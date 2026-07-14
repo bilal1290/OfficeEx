@@ -3,7 +3,10 @@ import { Link2, Pencil, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUsers } from '../hooks/useUsers';
 import { USER_ROLES } from '../lib/constants';
-import { getRoleLabel } from '../lib/permissions';
+import { getRoleLabel, getAccountStatusLabel } from '../lib/permissions';
+import { PendingAccountsPanel } from '../components/dashboard/PendingAccountsPanel';
+import { EmployeeManagementPanel } from '../components/admin/EmployeeManagementPanel';
+import { LeaveRequestsPanel } from '../components/admin/LeaveRequestsPanel';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
 import { DataErrorBanner } from '../components/ui/DataErrorBanner';
@@ -14,7 +17,7 @@ import { Badge } from '../components/ui/Badge';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { formatDateTime } from '../lib/datetime';
 import { clsx } from '../lib/utils';
-import type { UserProfile, UserRole } from '../types';
+import type { AccountStatus, UserProfile, UserRole } from '../types';
 
 type RoleFilter = 'all' | UserRole;
 type CreateMode = 'create' | 'link-email' | 'link-uid';
@@ -22,6 +25,7 @@ type CreateMode = 'create' | 'link-email' | 'link-uid';
 const roleBadgeVariant = (role: UserRole) => {
   if (role === 'admin') return 'info';
   if (role === 'viewer') return 'warning';
+  if (role === 'employee') return 'success';
   return 'default';
 };
 
@@ -30,6 +34,7 @@ const FILTER_OPTIONS: Array<{ value: RoleFilter; label: string }> = [
   { value: 'admin', label: 'Administrators' },
   { value: 'project_owner', label: 'Project Owners' },
   { value: 'viewer', label: 'Expense Viewers' },
+  { value: 'employee', label: 'Employees' },
 ];
 
 export function UsersPage() {
@@ -48,6 +53,7 @@ export function UsersPage() {
   const [password, setPassword] = useState('');
   const [uid, setUid] = useState('');
   const [role, setRole] = useState<UserRole>('project_owner');
+  const [accountStatus, setAccountStatus] = useState<AccountStatus>('verified');
 
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +64,7 @@ export function UsersPage() {
       admin: users.filter((user) => user.role === 'admin').length,
       project_owner: users.filter((user) => user.role === 'project_owner').length,
       viewer: users.filter((user) => user.role === 'viewer').length,
+      employee: users.filter((user) => user.role === 'employee').length,
     }),
     [users],
   );
@@ -87,6 +94,7 @@ export function UsersPage() {
     setDisplayName(user.displayName);
     setEmail(user.email);
     setRole(user.role);
+    setAccountStatus(user.accountStatus ?? 'verified');
     setFormError('');
     setEditModalOpen(true);
   };
@@ -130,6 +138,7 @@ export function UsersPage() {
         displayName,
         email,
         role,
+        accountStatus,
       });
       setEditModalOpen(false);
       setEditingUser(null);
@@ -151,6 +160,9 @@ export function UsersPage() {
   return (
     <div className="page">
       {error && <DataErrorBanner message={error} />}
+      <PendingAccountsPanel />
+      <LeaveRequestsPanel />
+      <EmployeeManagementPanel />
       <Card className="team-card" padding={false}>
         <div className="team-card-head">
           <CardHeader
@@ -213,6 +225,11 @@ export function UsersPage() {
                   <Badge variant={roleBadgeVariant(user.role)}>
                     {getRoleLabel(user.role)}
                   </Badge>
+                  {user.accountStatus && user.accountStatus !== 'verified' && (
+                    <Badge variant={user.accountStatus === 'rejected' ? 'default' : 'warning'}>
+                      {getAccountStatusLabel(user.accountStatus)}
+                    </Badge>
+                  )}
                   <span className="team-member-joined">
                     Joined {formatDateTime(user.createdAt)}
                   </span>
@@ -382,6 +399,18 @@ export function UsersPage() {
             onChange={(event) => setRole(event.target.value as UserRole)}
             disabled={editingUser?.uid === profile?.uid}
           />
+          {editingUser?.uid !== profile?.uid && (
+            <Select
+              label="Account status"
+              value={accountStatus}
+              onChange={(event) => setAccountStatus(event.target.value as AccountStatus)}
+              options={[
+                { value: 'verified', label: 'Verified' },
+                { value: 'pending', label: 'Pending approval' },
+                { value: 'rejected', label: 'Rejected' },
+              ]}
+            />
+          )}
           {editingUser?.uid === profile?.uid && (
             <p className="form-hint">
               You cannot change your own role. Ask another admin if needed.

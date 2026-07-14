@@ -13,7 +13,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ThemePicker } from '../components/settings/ThemePicker';
-import { UserAvatar } from '../components/ui/UserAvatar';
+import { ProfilePhotoEditor } from '../components/settings/ProfilePhotoEditor';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { CurrencySelect } from '../components/ui/CurrencySelect';
@@ -138,12 +138,11 @@ export function SettingsPage() {
 
           {activeSection === 'account' && profile && (
             <div className="settings-section">
-              <div className="settings-profile-hero">
-                <UserAvatar user={profile} size="xl" />
-                <div>
-                  <p className="settings-profile-name">{profile.displayName}</p>
-                  <p className="settings-profile-email">{profile.email}</p>
-                </div>
+              <ProfilePhotoEditor />
+
+              <div className="settings-profile-meta">
+                <p className="settings-profile-name">{profile.displayName}</p>
+                <p className="settings-profile-email">{profile.email}</p>
               </div>
 
               <div className="settings-field">

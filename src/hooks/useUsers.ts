@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { onValue, ref, set } from 'firebase/database';
 import { useAuth } from '../context/AuthContext';
 import {
+  approveTeamAccount,
   createUserAccount,
   linkExistingUserByEmail,
   linkExistingUserProfile,
+  rejectPendingAccount,
+  verifyEmployeeAccount,
 } from '../lib/auth-api';
 import { db } from '../lib/firebase';
-import { normalizeUsers } from '../lib/users';
+import { normalizeUsers, serializeUserForDatabase } from '../lib/users';
 import type { UserProfile, UserRole } from '../types';
 
 export function useUsers() {
@@ -63,9 +66,14 @@ export function useUsers() {
   const viewers = users.filter((user) => user.role === 'viewer');
   const admins = users.filter((user) => user.role === 'admin');
 
+  const pendingCount = useMemo(
+    () => users.filter((user) => user.accountStatus === 'pending').length,
+    [users],
+  );
+
   const updateUser = async (
     uid: string,
-    data: Partial<Pick<UserProfile, 'displayName' | 'email' | 'role'>>,
+    data: Partial<Pick<UserProfile, 'displayName' | 'email' | 'role' | 'accountStatus'>>,
   ) => {
     if (!db) throw new Error('Database is not configured');
     const existing = users.find((user) => user.uid === uid);
@@ -77,7 +85,7 @@ export function useUsers() {
       updatedAt: Date.now(),
     };
 
-    await set(ref(db, `users/${uid}`), updated);
+    await set(ref(db, `users/${uid}`), serializeUserForDatabase(updated));
     return updated;
   };
 
@@ -101,16 +109,28 @@ export function useUsers() {
     role: UserRole,
   ) => linkExistingUserProfile(uid, email, displayName, role);
 
+  const verifyEmployee = async (uid: string, employeeId: string) =>
+    verifyEmployeeAccount(uid, employeeId);
+
+  const approveTeam = async (uid: string, role: UserRole) =>
+    approveTeamAccount(uid, role);
+
+  const rejectPending = async (uid: string) => rejectPendingAccount(uid);
+
   return {
     users,
     projectOwners,
     viewers,
     admins,
+    pendingCount,
     loading,
     error,
     updateUser,
     addUser,
     linkUserByEmail,
     linkUserByUid,
+    verifyEmployee,
+    approveTeam,
+    rejectPending,
   };
 }

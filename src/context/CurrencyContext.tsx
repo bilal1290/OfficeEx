@@ -25,6 +25,7 @@ const DISPLAY_CURRENCY_KEY = 'officeex-display-currency';
 interface CurrencyContextValue {
   displayCurrency: CurrencyCode;
   setDisplayCurrency: (currency: CurrencyCode) => void;
+  resetDisplayCurrency: () => void;
   usdToPkr: number;
   rates: ExchangeRates;
   saveUsdToPkr: (rate: number) => Promise<void>;
@@ -93,6 +94,10 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(DISPLAY_CURRENCY_KEY, currency);
   }, []);
 
+  const resetDisplayCurrency = useCallback(() => {
+    setDisplayCurrency(DEFAULT_CURRENCY);
+  }, [setDisplayCurrency]);
+
   const saveUsdToPkr = useCallback(async (rate: number) => {
     if (!db) throw new Error('Database is not configured');
     const safeRate = rate > 0 ? rate : DEFAULT_USD_TO_PKR;
@@ -131,6 +136,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     () => ({
       displayCurrency,
       setDisplayCurrency,
+      resetDisplayCurrency,
       usdToPkr,
       rates,
       saveUsdToPkr,
@@ -143,6 +149,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     [
       displayCurrency,
       setDisplayCurrency,
+      resetDisplayCurrency,
       usdToPkr,
       rates,
       saveUsdToPkr,

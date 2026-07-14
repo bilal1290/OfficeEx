@@ -9,47 +9,48 @@
       }
     },
     "incomes": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() !== 'viewer'",
-      "$incomeId": {
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() !== 'viewer' && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (data.exists() ? data.child('ownerId').val() === auth.uid : newData.child('ownerId').val() === auth.uid))"
-      }
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "ownerExpenses": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() !== 'viewer'",
-      "$expenseId": {
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() !== 'viewer' && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (data.exists() ? data.child('ownerId').val() === auth.uid : newData.child('ownerId').val() === auth.uid))"
-      }
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "officeExpenses": {
-      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')",
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')",
-      "$expenseId": {
-        ".validate": "newData.hasChildren(['category', 'name', 'amount', 'month', 'year', 'description', 'createdAt'])"
-      }
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "fixedExpenses": {
-      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')",
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')",
-      "$recordId": {
-        ".validate": "newData.hasChildren(['id', 'month', 'year', 'amounts'])"
-      }
+      ".read": "auth != null",
+      ".write": "auth != null"
     },
     "employees": {
-      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "employeePayslips": {
+      ".read": "auth != null",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')"
+    },
+    "employeeAttendance": {
+      ".read": "auth != null",
       "$employeeId": {
-        ".validate": "newData.hasChildren(['id', 'name', 'monthlySalary', 'active', 'createdAt'])"
+        "$date": {
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'employee' && root.child('users').child(auth.uid).child('employeeId').val() === $employeeId && root.child('users').child(auth.uid).child('accountStatus').val() === 'verified'))"
+        }
+      }
+    },
+    "employeeLeaveRequests": {
+      ".read": "auth != null",
+      "$employeeId": {
+        "$requestId": {
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'employee' && root.child('users').child(auth.uid).child('employeeId').val() === $employeeId && root.child('users').child(auth.uid).child('accountStatus').val() === 'verified'))"
+        }
       }
     },
     "settings": {
       ".read": "auth != null",
-      "usdToPkr": {
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-        ".validate": "newData.isNumber() && newData.val() > 0"
-      },
-      "exchangeRates": {
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
-      }
+      ".write": "auth != null"
     }
   }
 }

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { onValue, ref, set } from 'firebase/database';
 import { FIXED_EXPENSE_CATEGORIES } from '../lib/constants';
+import { syncEmployeePayslips } from '../lib/payslips';
+import { enrichSalaryEntry } from '../lib/salaries';
 import { db } from '../lib/firebase';
-import type { FixedExpenseCategory, FixedMonthlyExpenses } from '../types';
+import type { FixedExpenseCategory, FixedMonthlyExpenses, MonthlySalaryEntry } from '../types';
 
 export function createEmptyFixedAmounts(): Record<FixedExpenseCategory, number> {
   return FIXED_EXPENSE_CATEGORIES.reduce(
@@ -103,15 +105,20 @@ export function useFixedExpenses(enabled = true) {
     if (!db) throw new Error('Database is not configured');
 
     const existing = getRecord(year, month);
+    const normalizedEntries = (salaryEntries ?? []).map((entry) =>
+      enrichSalaryEntry(entry, undefined, month, year),
+    ) as MonthlySalaryEntry[];
+
     const record: FixedMonthlyExpenses = {
       ...existing,
-      salaryEntries,
+      salaryEntries: normalizedEntries,
       currency: currency ?? existing.currency,
       updatedAt: Date.now(),
       updatedBy,
     };
 
     await set(ref(db, `fixedExpenses/${record.id}`), record);
+    await syncEmployeePayslips(year, month, normalizedEntries, record.currency);
     return record;
   };
 

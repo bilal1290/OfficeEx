@@ -1,5 +1,6 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { PendingVerificationPage } from '../../pages/PendingVerificationPage';
 
 function RouteLoader() {
   return (
@@ -10,8 +11,11 @@ function RouteLoader() {
   );
 }
 
+const VERIFIED_EMPLOYEE_PATHS = ['/my-salary', '/settings', '/pending'];
+
 export function ProtectedRoute() {
   const { user, profile, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return <RouteLoader />;
@@ -40,6 +44,22 @@ export function ProtectedRoute() {
         </div>
       </div>
     );
+  }
+
+  if (profile.accountStatus === 'pending' || profile.accountStatus === 'rejected') {
+    if (location.pathname === '/pending') {
+      return <Outlet />;
+    }
+    return <PendingVerificationPage />;
+  }
+
+  if (profile.role === 'employee') {
+    const allowed = VERIFIED_EMPLOYEE_PATHS.some(
+      (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+    );
+    if (!allowed) {
+      return <Navigate to="/my-salary" replace />;
+    }
   }
 
   return <Outlet />;
@@ -94,13 +114,29 @@ export function OwnerExpensesRoute() {
 }
 
 export function HomeRoute() {
-  const { permissions, loading } = useAuth();
+  const { permissions, loading, isVerifiedEmployee } = useAuth();
 
   if (loading) return <RouteLoader />;
+
+  if (isVerifiedEmployee) {
+    return <Navigate to="/my-salary" replace />;
+  }
 
   if (permissions.canViewIncomeOnDashboard) {
     return <Outlet />;
   }
 
   return <Navigate to="/office-expenses" replace />;
+}
+
+export function EmployeePortalRoute() {
+  const { permissions, loading } = useAuth();
+
+  if (loading) return <RouteLoader />;
+
+  if (!permissions.canAccessEmployeePortal) {
+    return <Navigate to="/pending" replace />;
+  }
+
+  return <Outlet />;
 }

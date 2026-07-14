@@ -1,4 +1,5 @@
-import type { UserRole } from '../types';
+import { isAccountApproved } from './account-status';
+import type { AccountStatus, UserRole } from '../types';
 
 export interface Permissions {
   canViewIncome: boolean;
@@ -13,6 +14,9 @@ export interface Permissions {
   canUpdateFixedExpenses: boolean;
   canViewExpenseTransactions: boolean;
   canViewIncomeOnDashboard: boolean;
+  canViewOwnSalary: boolean;
+  canAccessEmployeePortal: boolean;
+  canVerifyEmployees: boolean;
 }
 
 const NO_PERMISSIONS: Permissions = {
@@ -28,9 +32,31 @@ const NO_PERMISSIONS: Permissions = {
   canUpdateFixedExpenses: false,
   canViewExpenseTransactions: false,
   canViewIncomeOnDashboard: false,
+  canViewOwnSalary: false,
+  canAccessEmployeePortal: false,
+  canVerifyEmployees: false,
 };
 
-export function getPermissions(role?: UserRole): Permissions {
+export function isVerifiedEmployee(
+  role?: UserRole,
+  accountStatus?: AccountStatus,
+  employeeId?: string,
+): boolean {
+  return role === 'employee' && accountStatus === 'verified' && Boolean(employeeId);
+}
+
+export function getPermissions(
+  role?: UserRole,
+  accountStatus?: AccountStatus,
+  employeeId?: string,
+): Permissions {
+  if (
+    role &&
+    !isAccountApproved({ role, accountStatus })
+  ) {
+    return NO_PERMISSIONS;
+  }
+
   switch (role) {
     case 'admin':
       return {
@@ -46,6 +72,9 @@ export function getPermissions(role?: UserRole): Permissions {
         canUpdateFixedExpenses: true,
         canViewExpenseTransactions: true,
         canViewIncomeOnDashboard: true,
+        canViewOwnSalary: false,
+        canAccessEmployeePortal: false,
+        canVerifyEmployees: true,
       };
     case 'viewer':
       return {
@@ -61,6 +90,9 @@ export function getPermissions(role?: UserRole): Permissions {
         canUpdateFixedExpenses: true,
         canViewExpenseTransactions: true,
         canViewIncomeOnDashboard: false,
+        canViewOwnSalary: false,
+        canAccessEmployeePortal: false,
+        canVerifyEmployees: false,
       };
     case 'project_owner':
       return {
@@ -76,6 +108,15 @@ export function getPermissions(role?: UserRole): Permissions {
         canUpdateFixedExpenses: false,
         canViewExpenseTransactions: true,
         canViewIncomeOnDashboard: true,
+        canViewOwnSalary: false,
+        canAccessEmployeePortal: false,
+        canVerifyEmployees: false,
+      };
+    case 'employee':
+      return {
+        ...NO_PERMISSIONS,
+        canViewOwnSalary: isVerifiedEmployee(role, accountStatus, employeeId),
+        canAccessEmployeePortal: isVerifiedEmployee(role, accountStatus, employeeId),
       };
     default:
       return NO_PERMISSIONS;
@@ -90,5 +131,20 @@ export function getRoleLabel(role: UserRole): string {
       return 'Expense Viewer';
     case 'project_owner':
       return 'Project Owner';
+    case 'employee':
+      return 'Employee';
+  }
+}
+
+export function getAccountStatusLabel(status?: AccountStatus): string {
+  switch (status) {
+    case 'pending':
+      return 'Pending verification';
+    case 'verified':
+      return 'Verified';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return 'Active';
   }
 }

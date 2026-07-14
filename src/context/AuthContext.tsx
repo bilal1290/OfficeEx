@@ -14,11 +14,13 @@ import {
   type User,
 } from 'firebase/auth';
 import { get, ref, set } from 'firebase/database';
-import { ensureUserProfile } from '../lib/auth-api';
+import { ensureUserProfile, createEmployeeProfile } from '../lib/auth-api';
 import { completeGoogleRedirectSignIn, signInWithGoogle as firebaseGoogleSignIn } from '../lib/google-auth';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
-import { getPermissions, type Permissions } from '../lib/permissions';
-import { resolveAuthPhotoUrl, sanitizeUserProfile } from '../lib/users';
+import { getPermissions, isVerifiedEmployee, type Permissions } from '../lib/permissions';
+import { notifyAdminsOfRegistration } from '../lib/registration-notify';
+import { isAccountApproved, needsAdminApproval } from '../lib/account-status';
+import { resolveAuthPhotoUrl, sanitizeUserProfile, isCustomProfilePhoto, serializeUserForDatabase } from '../lib/users';
 import type { UserProfile, UserRole } from '../types';
 
 interface AuthContextValue {
@@ -31,16 +33,36 @@ interface AuthContextValue {
     email: string,
     password: string,
     displayName: string,
+    asEmployee?: boolean,
   ) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfilePhoto: (photoURL: string | null) => Promise<void>;
   role: UserRole | undefined;
   isAdmin: boolean;
   isViewer: boolean;
   isProjectOwner: boolean;
+  isEmployee: boolean;
+  isVerifiedEmployee: boolean;
+  isPendingApproval: boolean;
   permissions: Permissions;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function notifyIfNewPendingProfile(
+  profile: UserProfile,
+  registrationKind: 'team' | 'employee',
+  isNewProfile: boolean,
+): Promise<void> {
+  if (!isNewProfile || isAccountApproved(profile)) return;
+  if (profile.accountStatus !== 'pending') return;
+
+  await notifyAdminsOfRegistration({
+    displayName: profile.displayName,
+    email: profile.email,
+    registrationKind,
+  });
+}
 
 async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | null> {
   if (!db) return null;
@@ -55,13 +77,20 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
     );
     if (!existing) return null;
 
-    if (photoURL && existing.photoURL !== photoURL) {
+    if (
+      photoURL &&
+      !isCustomProfilePhoto(existing.photoURL) &&
+      existing.photoURL !== photoURL
+    ) {
       const updated: UserProfile = {
         ...existing,
         photoURL,
         updatedAt: Date.now(),
       };
-      await set(ref(db, `users/${firebaseUser.uid}`), updated);
+      await set(
+        ref(db, `users/${firebaseUser.uid}`),
+        serializeUserForDatabase(updated),
+      );
       return updated;
     }
 
@@ -75,13 +104,16 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
     firebaseUser.email?.split('@')[0] ||
     'Team member';
 
-  return ensureUserProfile(
+  const created = await ensureUserProfile(
     firebaseUser.uid,
     firebaseUser.email ?? '',
     displayName,
     isFirstUser,
     photoURL,
   );
+
+  await notifyIfNewPendingProfile(created, 'team', true);
+  return created;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -90,7 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(isFirebaseConfigured);
 
   const role = profile?.role;
-  const permissions = useMemo(() => getPermissions(role), [role]);
+  const permissions = useMemo(
+    () => getPermissions(role, profile?.accountStatus, profile?.employeeId),
+    [role, profile?.accountStatus, profile?.employeeId],
+  );
+  const verifiedEmployee = isVerifiedEmployee(
+    role,
+    profile?.accountStatus,
+    profile?.employeeId,
+  );
+  const pendingApproval = profile ? needsAdminApproval(profile) : false;
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth || !db) {
@@ -156,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     displayName: string,
+    asEmployee = false,
   ) => {
     if (!auth || !db) throw new Error('Firebase is not configured');
 
@@ -165,25 +207,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     );
 
+    if (asEmployee) {
+      const userProfile = await createEmployeeProfile(
+        credential.user.uid,
+        email,
+        displayName,
+      );
+      const saved = sanitizeUserProfile(credential.user.uid, userProfile);
+      setProfile(saved);
+      await notifyIfNewPendingProfile(userProfile, 'employee', true);
+      return;
+    }
+
     const usersSnapshot = await get(ref(db, 'users'));
     const isFirstUser = !usersSnapshot.exists();
-    const userRole: UserRole = isFirstUser ? 'admin' : 'project_owner';
+
+    if (isFirstUser) {
+      const userProfile: UserProfile = {
+        uid: credential.user.uid,
+        email,
+        displayName,
+        role: 'admin',
+        accountStatus: 'verified',
+        createdAt: Date.now(),
+      };
+      await set(
+        ref(db, `users/${credential.user.uid}`),
+        serializeUserForDatabase(userProfile),
+      );
+      setProfile(sanitizeUserProfile(credential.user.uid, userProfile));
+      return;
+    }
 
     const userProfile: UserProfile = {
       uid: credential.user.uid,
       email,
       displayName,
-      role: userRole,
+      role: 'project_owner',
+      accountStatus: 'pending',
       createdAt: Date.now(),
     };
 
-    await set(ref(db, `users/${credential.user.uid}`), userProfile);
+    await set(
+      ref(db, `users/${credential.user.uid}`),
+      serializeUserForDatabase(userProfile),
+    );
     setProfile(sanitizeUserProfile(credential.user.uid, userProfile));
+    await notifyIfNewPendingProfile(userProfile, 'team', true);
   };
 
   const logout = async () => {
     if (!auth) return;
     await signOut(auth);
+  };
+
+  const updateProfilePhoto = async (photoURL: string | null) => {
+    if (!db || !profile) {
+      throw new Error('Profile is not available.');
+    }
+
+    const updated: UserProfile = {
+      ...profile,
+      updatedAt: Date.now(),
+    };
+
+    if (photoURL === null) {
+      delete updated.photoURL;
+    } else {
+      updated.photoURL = photoURL;
+    }
+
+    await set(
+      ref(db, `users/${profile.uid}`),
+      serializeUserForDatabase(updated),
+    );
+    setProfile(sanitizeUserProfile(profile.uid, updated));
   };
 
   return (
@@ -196,10 +294,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginWithGoogle,
         register,
         logout,
+        updateProfilePhoto,
         role,
         isAdmin: role === 'admin',
         isViewer: role === 'viewer',
         isProjectOwner: role === 'project_owner',
+        isEmployee: role === 'employee',
+        isVerifiedEmployee: verifiedEmployee,
+        isPendingApproval: pendingApproval,
         permissions,
       }}
     >

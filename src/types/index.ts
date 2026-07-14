@@ -1,4 +1,6 @@
-export type UserRole = 'admin' | 'project_owner' | 'viewer';
+export type UserRole = 'admin' | 'project_owner' | 'viewer' | 'employee';
+
+export type AccountStatus = 'pending' | 'verified' | 'rejected';
 
 export type CurrencyCode = 'USD' | 'PKR' | 'EUR' | 'GBP';
 
@@ -23,6 +25,8 @@ export interface UserProfile {
   displayName: string;
   photoURL?: string;
   role: UserRole;
+  accountStatus?: AccountStatus;
+  employeeId?: string;
   createdAt: number;
   updatedAt?: number;
 }
@@ -154,9 +158,11 @@ export interface Employee {
   id: string;
   name: string;
   title?: string;
+  email?: string;
   monthlySalary: number;
   currency?: CurrencyCode;
   active: boolean;
+  userId?: string;
   createdAt: number;
   updatedAt?: number;
 }
@@ -164,7 +170,62 @@ export interface Employee {
 export interface MonthlySalaryEntry {
   employeeId: string;
   employeeName: string;
+  baseSalary: number;
+  leaveDays: number;
+  leaveDeduction: number;
+  bonus: number;
+  otherDeductions: number;
   amount: number;
   paid: boolean;
   note?: string;
+}
+
+export interface EmployeePayslip {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  month: number;
+  year: number;
+  baseSalary: number;
+  leaveDays: number;
+  leaveDeduction: number;
+  bonus: number;
+  otherDeductions: number;
+  netAmount: number;
+  paid: boolean;
+  currency?: CurrencyCode;
+  note?: string;
+  updatedAt?: number;
+  emailSentAt?: number;
+}
+
+export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'leave';
+
+export interface AttendanceRecord {
+  id: string;
+  employeeId: string;
+  date: string;
+  status: AttendanceStatus;
+  note?: string;
+  markedAt: number;
+  markedBy: string;
+}
+
+export type LeaveType = 'paid' | 'unpaid';
+
+export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  startDate: string;
+  endDate: string;
+  leaveType: LeaveType;
+  reason?: string;
+  status: LeaveRequestStatus;
+  appliedAt: number;
+  reviewedAt?: number;
+  reviewedBy?: string;
+  reviewNote?: string;
 }

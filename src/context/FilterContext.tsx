@@ -1,6 +1,8 @@
 import {
   createContext,
+  useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -12,25 +14,35 @@ interface FilterContextValue {
   resetFilter: () => void;
 }
 
-const defaultFilter = (): FilterState => ({
-  month: new Date().getMonth() + 1,
-  year: new Date().getFullYear(),
-  ownerId: 'all',
-});
+export function createDefaultFilter(): FilterState {
+  const now = new Date();
+  return {
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+    ownerId: 'all',
+  };
+}
 
 const FilterContext = createContext<FilterContextValue | null>(null);
 
 export function FilterProvider({ children }: { children: ReactNode }) {
-  const [filter, setFilterState] = useState<FilterState>(defaultFilter);
+  const [filter, setFilterState] = useState<FilterState>(() => createDefaultFilter());
 
-  const setFilter = (partial: Partial<FilterState>) => {
+  const setFilter = useCallback((partial: Partial<FilterState>) => {
     setFilterState((prev) => ({ ...prev, ...partial }));
-  };
+  }, []);
 
-  const resetFilter = () => setFilterState(defaultFilter());
+  const resetFilter = useCallback(() => {
+    setFilterState(createDefaultFilter());
+  }, []);
+
+  const value = useMemo(
+    () => ({ filter, setFilter, resetFilter }),
+    [filter, setFilter, resetFilter],
+  );
 
   return (
-    <FilterContext.Provider value={{ filter, setFilter, resetFilter }}>
+    <FilterContext.Provider value={value}>
       {children}
     </FilterContext.Provider>
   );

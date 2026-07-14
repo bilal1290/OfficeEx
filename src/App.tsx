@@ -7,6 +7,7 @@ import { CurrencyProvider } from './context/CurrencyContext';
 import { AppLayout } from './components/layout/AppLayout';
 import {
   AdminRoute,
+  EmployeePortalRoute,
   HomeRoute,
   IncomeRoute,
   OfficeExpensesRoute,
@@ -22,6 +23,8 @@ import { ExpensesPage } from './pages/ExpensesPage';
 import { OfficeExpensesPage } from './pages/OfficeExpensesPage';
 import { UsersPage } from './pages/UsersPage';
 import { TransactionsPage } from './pages/TransactionsPage';
+import { EmployeePortalPage } from './pages/EmployeePortalPage';
+import { PendingVerificationPage } from './pages/PendingVerificationPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { isFirebaseConfigured } from './lib/firebase';
 
@@ -58,6 +61,10 @@ export default function App() {
                   </Route>
                   <Route path="transactions" element={<TransactionsPage />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route path="pending" element={<PendingVerificationPage />} />
+                  <Route element={<EmployeePortalRoute />}>
+                    <Route path="my-salary" element={<EmployeePortalPage />} />
+                  </Route>
                   <Route element={<AdminRoute />}>
                     <Route path="users" element={<UsersPage />} />
                   </Route>

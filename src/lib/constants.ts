@@ -83,6 +83,11 @@ export const USER_ROLES: {
     label: 'Expense Viewer',
     description: 'View, add, and update office & fixed expenses (no income access)',
   },
+  {
+    value: 'employee',
+    label: 'Employee',
+    description: 'View verified salary breakdown including leaves and bonuses',
+  },
 ];
 
 export const CHART_COLORS = [

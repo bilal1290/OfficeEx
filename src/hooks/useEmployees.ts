@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { onValue, ref, set } from 'firebase/database';
-import { normalizeEmployees } from '../lib/employees';
+import { normalizeEmployees, serializeEmployeeForDatabase } from '../lib/employees';
 import { generateId } from '../lib/utils';
 import { db } from '../lib/firebase';
 import type { CurrencyCode, Employee } from '../types';
@@ -48,6 +48,7 @@ export function useEmployees() {
   const addEmployee = async (input: {
     name: string;
     title?: string;
+    email?: string;
     monthlySalary: number;
     currency?: CurrencyCode;
   }) => {
@@ -59,6 +60,7 @@ export function useEmployees() {
       id,
       name: input.name.trim(),
       title: input.title?.trim() || undefined,
+      email: input.email?.trim() || undefined,
       monthlySalary: input.monthlySalary,
       currency: input.currency,
       active: true,
@@ -66,14 +68,14 @@ export function useEmployees() {
       updatedAt: now,
     };
 
-    await set(ref(db, `employees/${id}`), employee);
+    await set(ref(db, `employees/${id}`), serializeEmployeeForDatabase(employee));
     return employee;
   };
 
   const updateEmployee = async (
     id: string,
     updates: Partial<
-      Pick<Employee, 'name' | 'title' | 'monthlySalary' | 'currency' | 'active'>
+      Pick<Employee, 'name' | 'title' | 'email' | 'monthlySalary' | 'currency' | 'active'>
     >,
   ) => {
     if (!db) throw new Error('Database is not configured');
@@ -89,10 +91,14 @@ export function useEmployees() {
         updates.title === undefined
           ? existing.title
           : updates.title.trim() || undefined,
+      email:
+        updates.email === undefined
+          ? existing.email
+          : updates.email.trim() || undefined,
       updatedAt: Date.now(),
     };
 
-    await set(ref(db, `employees/${id}`), updated);
+    await set(ref(db, `employees/${id}`), serializeEmployeeForDatabase(updated));
     return updated;
   };
 

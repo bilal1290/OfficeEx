@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getInitials, getUserAvatarUrl } from '../../lib/users';
 import { clsx } from '../../lib/utils';
 
@@ -26,6 +26,10 @@ export function UserAvatar({ user, size = 'md', className }: UserAvatarProps) {
   const showImage = !imageFailed;
   const initials = getInitials(user.displayName);
 
+  useEffect(() => {
+    setImageFailed(false);
+  }, [user.photoURL, user.uid]);
+
   return (
     <div
       className={clsx('user-avatar', sizeClass[size], className)}
@@ -34,6 +38,7 @@ export function UserAvatar({ user, size = 'md', className }: UserAvatarProps) {
     >
       {showImage ? (
         <img
+          key={user.photoURL}
           src={getUserAvatarUrl(user)}
           alt=""
           className="user-avatar-image"

@@ -7,16 +7,25 @@ import {
   Settings,
   Users,
   Wallet,
+  BadgeDollarSign,
 } from 'lucide-react';
+import { useUsers } from '../../hooks/useUsers';
 import { useAuth } from '../../context/AuthContext';
 import { getRoleLabel } from '../../lib/permissions';
 import { clsx } from '../../lib/utils';
 import { UserAvatar } from '../ui/UserAvatar';
 
 export function Sidebar() {
-  const { profile, permissions } = useAuth();
+  const { profile, permissions, isPendingApproval } = useAuth();
+  const { pendingCount } = useUsers();
 
   const navItems = [
+    {
+      to: '/my-salary',
+      icon: BadgeDollarSign,
+      label: 'My Portal',
+        show: permissions.canAccessEmployeePortal,
+    },
     {
       to: '/',
       icon: LayoutDashboard,
@@ -58,7 +67,7 @@ export function Sidebar() {
       to: '/settings',
       icon: Settings,
       label: 'Settings',
-      show: true,
+      show: !isPendingApproval,
     },
   ];
 
@@ -86,6 +95,9 @@ export function Sidebar() {
             >
               <Icon size={20} />
               <span>{label}</span>
+              {to === '/users' && pendingCount > 0 && (
+                <span className="nav-pending-badge">{pendingCount}</span>
+              )}
             </NavLink>
           ))}
       </nav>

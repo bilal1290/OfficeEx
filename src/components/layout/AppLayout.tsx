@@ -8,6 +8,8 @@ const pageTitles: Record<string, { title: string; subtitle?: string }> = {
   '/users': { title: 'Team', subtitle: 'Roles, access & project owners' },
   '/office-expenses': { title: 'Office Expenses', subtitle: 'Fixed & operational costs' },
   '/transactions': { title: 'Ledger', subtitle: 'Complete transaction history' },
+  '/my-salary': { title: 'Employee portal', subtitle: 'Salary breakdown and daily attendance' },
+  '/pending': { title: 'Verification', subtitle: 'Employee access approval' },
   '/settings': { title: 'Preferences', subtitle: 'Account & appearance' },
 };
 

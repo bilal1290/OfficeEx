@@ -14,8 +14,10 @@ import {
   Sun,
   Users,
   Wallet,
+  BadgeDollarSign,
   X,
 } from 'lucide-react';
+import { useUsers } from '../../hooks/useUsers';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { getRoleLabel } from '../../lib/permissions';
@@ -36,13 +38,22 @@ interface NavItem {
 const MOBILE_DOCK_SLOTS = 3;
 
 export function TopNav() {
-  const { profile, permissions, logout } = useAuth();
+  const { profile, permissions, isPendingApproval, logout } = useAuth();
+  const { pendingCount } = useUsers();
   const { resolvedColorScheme, toggleColorScheme } = useTheme();
   const location = useLocation();
   const [hubOpen, setHubOpen] = useState(false);
 
   const navItems: NavItem[] = useMemo(
     () => [
+      {
+        to: '/my-salary',
+        icon: BadgeDollarSign,
+        label: 'My Portal',
+        shortLabel: 'Portal',
+        show: permissions.canAccessEmployeePortal,
+        priority: 0,
+      },
       {
         to: '/',
         icon: LayoutDashboard,
@@ -97,11 +108,11 @@ export function TopNav() {
         icon: Settings,
         label: 'Settings',
         shortLabel: 'Settings',
-        show: true,
+        show: !isPendingApproval,
         priority: 7,
       },
     ],
-    [permissions],
+    [permissions, isPendingApproval],
   );
 
   const visibleItems = useMemo(
@@ -279,6 +290,9 @@ export function TopNav() {
               >
                 <Icon size={16} />
                 <span>{label}</span>
+                {to === '/users' && pendingCount > 0 && (
+                  <span className="nav-pending-badge">{pendingCount}</span>
+                )}
               </NavLink>
             ))}
           </nav>

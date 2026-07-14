@@ -13,7 +13,7 @@ interface FilterBarProps {
 
 export function FilterBar({ showOwnerFilter = true }: FilterBarProps) {
   const { filter, setFilter, resetFilter } = useFilter();
-  const { displayCurrency, setDisplayCurrency } = useCurrency();
+  const { displayCurrency, setDisplayCurrency, resetDisplayCurrency } = useCurrency();
   const { projectOwners } = useUsers();
 
   const monthValue = filter.month === 'all' ? 'all' : String(filter.month);
@@ -56,6 +56,11 @@ export function FilterBar({ showOwnerFilter = true }: FilterBarProps) {
 
   const handleCurrencyChange = (value: string) => {
     setDisplayCurrency(value as CurrencyCode);
+  };
+
+  const handleReset = () => {
+    resetFilter();
+    resetDisplayCurrency();
   };
 
   return (
@@ -137,7 +142,7 @@ export function FilterBar({ showOwnerFilter = true }: FilterBarProps) {
       <button
         type="button"
         className="filter-toolbar-reset"
-        onClick={resetFilter}
+        onClick={handleReset}
         title="Reset filters"
         aria-label="Reset filters"
       >

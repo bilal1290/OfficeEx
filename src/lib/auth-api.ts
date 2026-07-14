@@ -1,6 +1,6 @@
 import { ref, get, set, runTransaction } from 'firebase/database';
 import { db, firebaseConfig } from './firebase';
-import { sanitizeUserProfile } from './users';
+import { sanitizeUserProfile, serializeUserForDatabase } from './users';
 import type { UserProfile, UserRole } from '../types';
 
 interface CreateAuthUserResponse {
@@ -80,10 +80,11 @@ export async function linkExistingUserProfile(
     email: email.trim(),
     displayName: displayName.trim(),
     role,
+    accountStatus: 'verified',
     createdAt: Date.now(),
   };
 
-  await set(ref(db, `users/${trimmedUid}`), profile);
+  await set(ref(db, `users/${trimmedUid}`), serializeUserForDatabase(profile));
   return profile;
 }
 
@@ -144,10 +145,146 @@ export async function createUserAccount(
     email,
     displayName,
     role,
+    accountStatus: 'verified',
     createdAt: Date.now(),
   };
 
-  await set(ref(db, `users/${authData.localId}`), profile);
+  await set(ref(db, `users/${authData.localId}`), serializeUserForDatabase(profile));
+  return profile;
+}
+
+export async function verifyEmployeeAccount(
+  uid: string,
+  employeeId: string,
+): Promise<UserProfile> {
+  if (!db) {
+    throw new Error('Database is not configured');
+  }
+
+  const userSnapshot = await get(ref(db, `users/${uid}`));
+  if (!userSnapshot.exists()) {
+    throw new Error('User profile not found.');
+  }
+
+  const employeeSnapshot = await get(ref(db, `employees/${employeeId}`));
+  if (!employeeSnapshot.exists()) {
+    throw new Error('Employee record not found.');
+  }
+
+  const existingUser = sanitizeUserProfile(uid, userSnapshot.val() as UserProfile);
+  if (!existingUser) {
+    throw new Error('Invalid user profile.');
+  }
+
+  if (existingUser.role !== 'employee') {
+    throw new Error('Only employee accounts can be verified here.');
+  }
+
+  if (existingUser.accountStatus !== 'pending') {
+    throw new Error('This employee account is not waiting for approval.');
+  }
+
+  const linkedUserSnapshot = await get(ref(db, `employees/${employeeId}/userId`));
+  if (linkedUserSnapshot.exists() && linkedUserSnapshot.val() !== uid) {
+    throw new Error('This employee is already linked to another account.');
+  }
+
+  const updatedUser: UserProfile = {
+    ...existingUser,
+    accountStatus: 'verified',
+    employeeId,
+    updatedAt: Date.now(),
+  };
+
+  await set(ref(db, `users/${uid}`), serializeUserForDatabase(updatedUser));
+  await set(ref(db, `employees/${employeeId}/userId`), uid);
+  await set(ref(db, `employees/${employeeId}/updatedAt`), Date.now());
+
+  return updatedUser;
+}
+
+export async function approveTeamAccount(
+  uid: string,
+  role: UserRole,
+): Promise<UserProfile> {
+  if (!db) {
+    throw new Error('Database is not configured');
+  }
+
+  if (role === 'employee') {
+    throw new Error('Use employee verification to approve employee accounts.');
+  }
+
+  const userSnapshot = await get(ref(db, `users/${uid}`));
+  if (!userSnapshot.exists()) {
+    throw new Error('User profile not found.');
+  }
+
+  const existingUser = sanitizeUserProfile(uid, userSnapshot.val() as UserProfile);
+  if (!existingUser) {
+    throw new Error('Invalid user profile.');
+  }
+
+  if (existingUser.accountStatus !== 'pending') {
+    throw new Error('This account is not waiting for approval.');
+  }
+
+  const updatedUser: UserProfile = {
+    ...existingUser,
+    role,
+    accountStatus: 'verified',
+    updatedAt: Date.now(),
+  };
+
+  await set(ref(db, `users/${uid}`), serializeUserForDatabase(updatedUser));
+  return updatedUser;
+}
+
+export async function rejectPendingAccount(uid: string): Promise<UserProfile> {
+  if (!db) {
+    throw new Error('Database is not configured');
+  }
+
+  const userSnapshot = await get(ref(db, `users/${uid}`));
+  if (!userSnapshot.exists()) {
+    throw new Error('User profile not found.');
+  }
+
+  const existingUser = sanitizeUserProfile(uid, userSnapshot.val() as UserProfile);
+  if (!existingUser) {
+    throw new Error('Invalid user profile.');
+  }
+
+  const updatedUser: UserProfile = {
+    ...existingUser,
+    accountStatus: 'rejected',
+    updatedAt: Date.now(),
+  };
+  delete updatedUser.employeeId;
+
+  await set(ref(db, `users/${uid}`), serializeUserForDatabase(updatedUser));
+  return updatedUser;
+}
+
+export async function createEmployeeProfile(
+  uid: string,
+  email: string,
+  displayName: string,
+): Promise<UserProfile> {
+  if (!db) {
+    throw new Error('Database is not configured');
+  }
+
+  const profile: UserProfile = {
+    uid,
+    email,
+    displayName,
+    role: 'employee',
+    accountStatus: 'pending',
+    createdAt: Date.now(),
+  };
+
+  await set(ref(db, `users/${uid}`), serializeUserForDatabase(profile));
   return profile;
 }
 
@@ -168,7 +305,8 @@ export async function ensureUserProfile(
     email,
     displayName,
     photoURL,
-    role: isFirstUser ? 'admin' : 'viewer',
+    role: isFirstUser ? 'admin' : 'project_owner',
+    accountStatus: isFirstUser ? 'verified' : 'pending',
     createdAt: Date.now(),
   };
 
@@ -176,7 +314,7 @@ export async function ensureUserProfile(
     if (current) {
       return current;
     }
-    return profile;
+    return serializeUserForDatabase(profile);
   });
 
   const saved = sanitizeUserProfile(uid, result.snapshot.val() as UserProfile);
@@ -184,4 +322,84 @@ export async function ensureUserProfile(
     throw new Error('Failed to save user profile.');
   }
   return saved;
+}
+
+export async function allotEmployeeCredentials(
+  employeeId: string,
+  email: string,
+  password: string,
+  displayName: string,
+): Promise<UserProfile> {
+  if (!db) {
+    throw new Error('Database is not configured');
+  }
+
+  const trimmedEmail = email.trim();
+  const trimmedName = displayName.trim();
+  if (!trimmedEmail || !trimmedName) {
+    throw new Error('Email and display name are required.');
+  }
+
+  const employeeSnapshot = await get(ref(db, `employees/${employeeId}`));
+  if (!employeeSnapshot.exists()) {
+    throw new Error('Employee record not found.');
+  }
+
+  const employee = employeeSnapshot.val() as {
+    userId?: string;
+    email?: string;
+  };
+
+  if (employee.userId) {
+    throw new Error('This employee already has login credentials linked.');
+  }
+
+  const linkedUserSnapshot = await get(ref(db, `employees/${employeeId}/userId`));
+  if (linkedUserSnapshot.exists()) {
+    throw new Error('This employee already has login credentials linked.');
+  }
+
+  const existingAuth = await lookupUserByEmail(trimmedEmail);
+  if (!existingAuth && password.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
+  }
+
+  let uid: string;
+
+  if (existingAuth) {
+    const profileSnapshot = await get(ref(db, `users/${existingAuth.uid}`));
+    if (profileSnapshot.exists()) {
+      throw new Error('This email is already linked to another team profile.');
+    }
+    uid = existingAuth.uid;
+  } else {
+    const created = await createUserAccount(
+      trimmedEmail,
+      password,
+      trimmedName,
+      'employee',
+    );
+    uid = created.uid;
+  }
+
+  const userProfile: UserProfile = {
+    uid,
+    email: trimmedEmail,
+    displayName: trimmedName,
+    role: 'employee',
+    accountStatus: 'verified',
+    employeeId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  await set(ref(db, `users/${uid}`), serializeUserForDatabase(userProfile));
+  await set(ref(db, `employees/${employeeId}/userId`), uid);
+  await set(ref(db, `employees/${employeeId}/updatedAt`), Date.now());
+
+  if (!employee.email?.trim()) {
+    await set(ref(db, `employees/${employeeId}/email`), trimmedEmail);
+  }
+
+  return userProfile;
 }
