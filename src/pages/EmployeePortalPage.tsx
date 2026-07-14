@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, Gift, MinusCircle, Palmtree, Wallet } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { CalendarDays, Gift, MessageCircle, MinusCircle, Palmtree, Wallet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useEmployeePayslips } from '../hooks/useEmployeePayslips';
@@ -163,7 +164,7 @@ function SalaryTab({ employeeId }: { employeeId: string }) {
 }
 
 export function EmployeePortalPage() {
-  const { profile } = useAuth();
+  const { profile, permissions } = useAuth();
   const employeeId = profile?.employeeId;
   const [tab, setTab] = useState<PortalTab>('salary');
 
@@ -172,6 +173,12 @@ export function EmployeePortalPage() {
       <Card className="my-salary-empty">
         <p>Your employee profile is not linked yet.</p>
         <span>Ask an administrator to verify and link your account.</span>
+        {permissions.canAccessChat && (
+          <Link to="/chat" className="btn btn-secondary btn-md employee-portal-messages-link">
+            <MessageCircle size={16} />
+            Open Messages
+          </Link>
+        )}
       </Card>
     );
   }

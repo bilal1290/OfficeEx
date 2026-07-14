@@ -15,15 +15,18 @@ import {
   Users,
   Wallet,
   BadgeDollarSign,
+  MessageCircle,
   X,
 } from 'lucide-react';
 import { useUsers } from '../../hooks/useUsers';
 import { useAuth } from '../../context/AuthContext';
+import { useChatNotifications } from '../../context/ChatNotificationContext';
 import { useTheme } from '../../context/ThemeContext';
 import { getRoleLabel } from '../../lib/permissions';
 import { clsx } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { UserAvatar } from '../ui/UserAvatar';
+import { ChatNotificationBell } from '../chat/ChatNotificationBell';
 
 interface NavItem {
   to: string;
@@ -40,6 +43,7 @@ const MOBILE_DOCK_SLOTS = 3;
 export function TopNav() {
   const { profile, permissions, isPendingApproval, logout } = useAuth();
   const { pendingCount } = useUsers();
+  const { unreadCount: chatUnreadCount } = useChatNotifications();
   const { resolvedColorScheme, toggleColorScheme } = useTheme();
   const location = useLocation();
   const [hubOpen, setHubOpen] = useState(false);
@@ -55,13 +59,21 @@ export function TopNav() {
         priority: 0,
       },
       {
+        to: '/chat',
+        icon: MessageCircle,
+        label: 'Messages',
+        shortLabel: 'Chat',
+        show: permissions.canAccessChat,
+        priority: 1,
+      },
+      {
         to: '/',
         icon: LayoutDashboard,
         label: 'Overview',
         shortLabel: 'Home',
         end: true,
         show: permissions.canViewIncomeOnDashboard,
-        priority: 1,
+        priority: 2,
       },
       {
         to: '/income',
@@ -69,7 +81,7 @@ export function TopNav() {
         label: 'Income',
         shortLabel: 'Income',
         show: permissions.canViewIncome,
-        priority: 2,
+        priority: 3,
       },
       {
         to: '/expenses',
@@ -77,7 +89,7 @@ export function TopNav() {
         label: 'Expenses',
         shortLabel: 'Costs',
         show: permissions.canManageOwnerExpenses,
-        priority: 3,
+        priority: 4,
       },
       {
         to: '/office-expenses',
@@ -85,7 +97,7 @@ export function TopNav() {
         label: 'Office',
         shortLabel: 'Office',
         show: permissions.canAccessOfficeExpenses,
-        priority: 4,
+        priority: 5,
       },
       {
         to: '/transactions',
@@ -93,7 +105,7 @@ export function TopNav() {
         label: 'Ledger',
         shortLabel: 'Ledger',
         show: permissions.canViewExpenseTransactions,
-        priority: 5,
+        priority: 6,
       },
       {
         to: '/users',
@@ -101,7 +113,7 @@ export function TopNav() {
         label: 'Team',
         shortLabel: 'Team',
         show: permissions.canManageUsers,
-        priority: 6,
+        priority: 7,
       },
       {
         to: '/settings',
@@ -109,7 +121,7 @@ export function TopNav() {
         label: 'Settings',
         shortLabel: 'Settings',
         show: !isPendingApproval,
-        priority: 7,
+        priority: 8,
       },
     ],
     [permissions, isPendingApproval],
@@ -166,6 +178,11 @@ export function TopNav() {
           >
             <span className="mobile-dock-icon">
               <Icon size={22} strokeWidth={2} />
+              {to === '/chat' && chatUnreadCount > 0 && (
+                <span className="mobile-dock-badge">
+                  {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+                </span>
+              )}
             </span>
             <span className="mobile-dock-label">{shortLabel}</span>
           </NavLink>
@@ -249,6 +266,11 @@ export function TopNav() {
               >
                 <span className="nav-hub-tile-icon">
                   <Icon size={26} strokeWidth={2} />
+                  {to === '/chat' && chatUnreadCount > 0 && (
+                    <span className="nav-hub-tile-badge">
+                      {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                    </span>
+                  )}
                 </span>
                 <span className="nav-hub-tile-label">{label}</span>
               </NavLink>
@@ -293,11 +315,17 @@ export function TopNav() {
                 {to === '/users' && pendingCount > 0 && (
                   <span className="nav-pending-badge">{pendingCount}</span>
                 )}
+                {to === '/chat' && chatUnreadCount > 0 && (
+                  <span className="nav-pending-badge nav-chat-badge">
+                    {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>
 
           <div className="topnav-actions">
+            {permissions.canAccessChat && <ChatNotificationBell />}
             <div className="topnav-user topnav-user-desktop">
               {profile && <UserAvatar user={profile} size="sm" className="topnav-user-avatar" />}
               <div>

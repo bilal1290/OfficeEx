@@ -1,4 +1,5 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { getAnalytics, type Analytics } from 'firebase/analytics';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getDatabase, type Database } from 'firebase/database';
 
@@ -14,6 +15,7 @@ export const firebaseConfig = {
   storageBucket: readEnv('VITE_FIREBASE_STORAGE_BUCKET'),
   messagingSenderId: readEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
   appId: readEnv('VITE_FIREBASE_APP_ID'),
+  measurementId: readEnv('VITE_FIREBASE_MEASUREMENT_ID'),
 };
 
 export const isFirebaseConfigured = Boolean(
@@ -37,11 +39,19 @@ export const missingFirebaseKeys = (
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Database | null = null;
+let analytics: Analytics | null = null;
 
 if (isFirebaseConfigured) {
-  app = initializeApp(firebaseConfig);
+  const { measurementId, ...requiredConfig } = firebaseConfig;
+  app = initializeApp(
+    measurementId ? { ...requiredConfig, measurementId } : requiredConfig,
+  );
   auth = getAuth(app);
   db = getDatabase(app);
+
+  if (measurementId && typeof window !== 'undefined') {
+    analytics = getAnalytics(app);
+  }
 }
 
-export { app, auth, db };
+export { app, auth, db, analytics };

@@ -16,6 +16,7 @@ export interface Permissions {
   canViewIncomeOnDashboard: boolean;
   canViewOwnSalary: boolean;
   canAccessEmployeePortal: boolean;
+  canAccessChat: boolean;
   canVerifyEmployees: boolean;
 }
 
@@ -34,6 +35,7 @@ const NO_PERMISSIONS: Permissions = {
   canViewIncomeOnDashboard: false,
   canViewOwnSalary: false,
   canAccessEmployeePortal: false,
+  canAccessChat: false,
   canVerifyEmployees: false,
 };
 
@@ -43,6 +45,22 @@ export function isVerifiedEmployee(
   employeeId?: string,
 ): boolean {
   return role === 'employee' && accountStatus === 'verified' && Boolean(employeeId);
+}
+
+/** Any approved team member who can use Messages (broader than full employee portal). */
+export function canAccessChat(
+  role?: UserRole,
+  accountStatus?: AccountStatus,
+): boolean {
+  if (!role || !isAccountApproved({ role, accountStatus })) {
+    return false;
+  }
+
+  if (role === 'employee') {
+    return accountStatus === 'verified';
+  }
+
+  return role === 'admin' || role === 'viewer' || role === 'project_owner';
 }
 
 export function getPermissions(
@@ -74,6 +92,7 @@ export function getPermissions(
         canViewIncomeOnDashboard: true,
         canViewOwnSalary: false,
         canAccessEmployeePortal: false,
+        canAccessChat: canAccessChat('admin', accountStatus),
         canVerifyEmployees: true,
       };
     case 'viewer':
@@ -92,6 +111,7 @@ export function getPermissions(
         canViewIncomeOnDashboard: false,
         canViewOwnSalary: false,
         canAccessEmployeePortal: false,
+        canAccessChat: canAccessChat('viewer', accountStatus),
         canVerifyEmployees: false,
       };
     case 'project_owner':
@@ -110,6 +130,7 @@ export function getPermissions(
         canViewIncomeOnDashboard: true,
         canViewOwnSalary: false,
         canAccessEmployeePortal: false,
+        canAccessChat: canAccessChat('project_owner', accountStatus),
         canVerifyEmployees: false,
       };
     case 'employee':
@@ -117,6 +138,7 @@ export function getPermissions(
         ...NO_PERMISSIONS,
         canViewOwnSalary: isVerifiedEmployee(role, accountStatus, employeeId),
         canAccessEmployeePortal: isVerifiedEmployee(role, accountStatus, employeeId),
+        canAccessChat: canAccessChat(role, accountStatus),
       };
     default:
       return NO_PERMISSIONS;

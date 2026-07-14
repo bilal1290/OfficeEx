@@ -229,3 +229,42 @@ export interface LeaveRequest {
   reviewedBy?: string;
   reviewNote?: string;
 }
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: number;
+  /** Optimistic client id — used until the server assigns a real id */
+  clientId?: string;
+  status?: 'pending' | 'sent' | 'failed';
+}
+
+export type ChatConversationType = 'direct' | 'group';
+
+export interface ChatConversation {
+  id: string;
+  type: ChatConversationType;
+  name: string | null;
+  slug: string | null;
+  createdBy: string;
+  createdAt: number;
+  memberIds: string[];
+}
+
+export type ChatNotificationType = 'message' | 'mention';
+
+export interface ChatNotification {
+  id: string;
+  recipientFirebaseUid: string;
+  conversationId: string;
+  messageId: string;
+  senderId: string;
+  senderName: string;
+  preview: string;
+  type: ChatNotificationType;
+  readAt: number | null;
+  createdAt: number;
+}
