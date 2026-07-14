@@ -38,7 +38,16 @@ export function getGoogleAuthErrorMessage(error: unknown): string {
       return 'Google sign-in is not enabled. Enable it in Firebase Console or run: npx firebase-tools deploy --only auth';
     case 'auth/account-exists-with-different-credential':
       return 'An account already exists with this email using a different sign-in method. Use email/password instead.';
+    case 'auth/invalid-credential':
+      return 'Google OAuth client was deleted or invalid. Create a new Web client in Google Cloud Console, then paste the new Client ID and secret in Firebase → Authentication → Google.';
     default:
+      if (
+        error instanceof Error &&
+        (error.message.includes('deleted_client') ||
+          error.message.includes('401: deleted_client'))
+      ) {
+        return 'Google OAuth client was deleted. Google Cloud Console → Credentials → Create OAuth Web client → paste new Client ID + secret in Firebase → Authentication → Google.';
+      }
       return error instanceof Error
         ? error.message
         : 'Google sign-in failed. Please try again.';

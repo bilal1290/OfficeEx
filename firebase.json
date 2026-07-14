@@ -39,8 +39,8 @@
         "oAuthBrandDisplayName": "OfficeEx",
         "supportEmail": "bilal.sqat@gmail.com",
         "authorizedRedirectUris": [
-          "https://expense-b68af.firebaseapp.com",
-          "https://expense-b68af.web.app",
+          "https://expense-b68af.firebaseapp.com/__/auth/handler",
+          "https://expense-b68af.web.app/__/auth/handler",
           "http://localhost"
         ]
       }

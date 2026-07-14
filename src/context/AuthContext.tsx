@@ -19,6 +19,7 @@ import { completeGoogleRedirectSignIn, signInWithGoogle as firebaseGoogleSignIn 
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import { getPermissions, isVerifiedEmployee, type Permissions } from '../lib/permissions';
 import { notifyAdminsOfRegistration } from '../lib/registration-notify';
+import { signOutSupabase, syncSupabaseSession } from '../lib/supabase-auth';
 import { isAccountApproved, needsAdminApproval } from '../lib/account-status';
 import { resolveAuthPhotoUrl, sanitizeUserProfile, isCustomProfilePhoto, serializeUserForDatabase } from '../lib/users';
 import type { UserProfile, UserRole } from '../types';
@@ -161,12 +162,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const nextProfile = await loadOrCreateProfile(firebaseUser);
             setProfile(nextProfile);
+            if (nextProfile && isAccountApproved(nextProfile)) {
+              try {
+                await syncSupabaseSession(firebaseUser, nextProfile.displayName);
+              } catch (error) {
+                console.error('Supabase chat session sync failed:', error);
+              }
+            }
           } catch (error) {
             console.error('Failed to load user profile:', error);
             setProfile(null);
           }
         } else {
           setProfile(null);
+          try {
+            await signOutSupabase();
+          } catch (error) {
+            console.warn('Supabase sign-out failed:', error);
+          }
         }
         finishLoading();
       },
@@ -258,6 +271,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     if (!auth) return;
+    try {
+      await signOutSupabase();
+    } catch (error) {
+      console.warn('Supabase sign-out failed:', error);
+    }
     await signOut(auth);
   };
 

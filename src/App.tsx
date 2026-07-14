@@ -7,6 +7,7 @@ import { CurrencyProvider } from './context/CurrencyContext';
 import { AppLayout } from './components/layout/AppLayout';
 import {
   AdminRoute,
+  ChatRoute,
   EmployeePortalRoute,
   HomeRoute,
   IncomeRoute,
@@ -26,6 +27,7 @@ import { TransactionsPage } from './pages/TransactionsPage';
 import { EmployeePortalPage } from './pages/EmployeePortalPage';
 import { PendingVerificationPage } from './pages/PendingVerificationPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ChatPage } from './pages/ChatPage';
 import { isFirebaseConfigured } from './lib/firebase';
 
 const Router = Capacitor.isNativePlatform() ? HashRouter : BrowserRouter;
@@ -61,6 +63,9 @@ export default function App() {
                   </Route>
                   <Route path="transactions" element={<TransactionsPage />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route element={<ChatRoute />}>
+                    <Route path="chat" element={<ChatPage />} />
+                  </Route>
                   <Route path="pending" element={<PendingVerificationPage />} />
                   <Route element={<EmployeePortalRoute />}>
                     <Route path="my-salary" element={<EmployeePortalPage />} />

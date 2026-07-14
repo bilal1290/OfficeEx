@@ -11,7 +11,7 @@ function RouteLoader() {
   );
 }
 
-const VERIFIED_EMPLOYEE_PATHS = ['/my-salary', '/settings', '/pending'];
+const VERIFIED_EMPLOYEE_PATHS = ['/my-salary', '/chat', '/settings', '/pending'];
 
 export function ProtectedRoute() {
   const { user, profile, loading } = useAuth();
@@ -136,6 +136,21 @@ export function EmployeePortalRoute() {
 
   if (!permissions.canAccessEmployeePortal) {
     return <Navigate to="/pending" replace />;
+  }
+
+  return <Outlet />;
+}
+
+export function ChatRoute() {
+  const { permissions, loading, profile } = useAuth();
+
+  if (loading) return <RouteLoader />;
+
+  if (!permissions.canAccessChat) {
+    if (profile?.role === 'employee') {
+      return <Navigate to="/my-salary" replace />;
+    }
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;

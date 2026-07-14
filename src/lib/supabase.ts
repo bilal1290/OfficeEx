@@ -5,7 +5,7 @@ function readEnv(key: string): string {
 }
 
 function readSupabaseKey(): string {
-  return readEnv('VITE_SUPABASE_PUBLISHABLE_KEY') || readEnv('VITE_SUPABASE_ANON_KEY');
+  return readEnv('VITE_SUPABASE_ANON_KEY') || readEnv('VITE_SUPABASE_PUBLISHABLE_KEY');
 }
 
 export const supabaseConfig = {
@@ -20,7 +20,7 @@ export const isSupabaseConfigured = Boolean(
 export const missingSupabaseKeys = (
   [
     ['VITE_SUPABASE_URL', supabaseConfig.url],
-    ['VITE_SUPABASE_PUBLISHABLE_KEY or VITE_SUPABASE_ANON_KEY', supabaseConfig.anonKey],
+    ['VITE_SUPABASE_ANON_KEY or VITE_SUPABASE_PUBLISHABLE_KEY', supabaseConfig.anonKey],
   ] as const
 ).filter(([, value]) => !value).map(([key]) => key);
 
@@ -31,6 +31,11 @@ if (isSupabaseConfigured) {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 20,
+      },
     },
   });
 }

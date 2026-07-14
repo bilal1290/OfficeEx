@@ -36,12 +36,21 @@ returns text
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, auth
 as $$
-  select firebase_uid
-  from public.profiles
-  where id = auth.uid()
-  limit 1;
+  select coalesce(
+    (
+      select firebase_uid
+      from public.profiles
+      where id = auth.uid()
+      limit 1
+    ),
+    split_part(
+      (select email from auth.users where id = auth.uid()),
+      '@',
+      1
+    )
+  );
 $$;
 
 drop policy if exists "profiles read team" on public.profiles;
@@ -64,7 +73,10 @@ create policy "chat read team"
 drop policy if exists "chat insert own" on public.chat_messages;
 create policy "chat insert own"
   on public.chat_messages for insert to authenticated
-  with check (sender_id = public.current_firebase_uid());
+  with check (
+    sender_id = public.current_firebase_uid()
+    and public.current_firebase_uid() is not null
+  );
 
 do $$
 begin

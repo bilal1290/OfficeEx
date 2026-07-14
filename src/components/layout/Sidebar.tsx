@@ -8,9 +8,11 @@ import {
   Users,
   Wallet,
   BadgeDollarSign,
+  MessageCircle,
 } from 'lucide-react';
 import { useUsers } from '../../hooks/useUsers';
 import { useAuth } from '../../context/AuthContext';
+import { useOptionalChatNotifications } from '../../context/ChatNotificationContext';
 import { getRoleLabel } from '../../lib/permissions';
 import { clsx } from '../../lib/utils';
 import { UserAvatar } from '../ui/UserAvatar';
@@ -18,6 +20,8 @@ import { UserAvatar } from '../ui/UserAvatar';
 export function Sidebar() {
   const { profile, permissions, isPendingApproval } = useAuth();
   const { pendingCount } = useUsers();
+  const chatNotifications = useOptionalChatNotifications();
+  const chatUnreadCount = chatNotifications?.unreadCount ?? 0;
 
   const navItems = [
     {
@@ -25,6 +29,12 @@ export function Sidebar() {
       icon: BadgeDollarSign,
       label: 'My Portal',
         show: permissions.canAccessEmployeePortal,
+    },
+    {
+      to: '/chat',
+      icon: MessageCircle,
+      label: 'Messages',
+      show: permissions.canAccessChat,
     },
     {
       to: '/',
@@ -97,6 +107,11 @@ export function Sidebar() {
               <span>{label}</span>
               {to === '/users' && pendingCount > 0 && (
                 <span className="nav-pending-badge">{pendingCount}</span>
+              )}
+              {to === '/chat' && chatUnreadCount > 0 && (
+                <span className="nav-pending-badge nav-chat-badge">
+                  {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                </span>
               )}
             </NavLink>
           ))}
