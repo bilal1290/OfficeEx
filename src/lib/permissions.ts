@@ -3,6 +3,8 @@ import type { UserRole } from '../types';
 export interface Permissions {
   canViewIncome: boolean;
   canManageUsers: boolean;
+  canManageEmployees: boolean;
+  canViewEmployees: boolean;
   canManageOwnerExpenses: boolean;
   canAccessOfficeExpenses: boolean;
   canCreateOfficeExpenses: boolean;
@@ -16,6 +18,8 @@ export interface Permissions {
 const NO_PERMISSIONS: Permissions = {
   canViewIncome: false,
   canManageUsers: false,
+  canManageEmployees: false,
+  canViewEmployees: false,
   canManageOwnerExpenses: false,
   canAccessOfficeExpenses: false,
   canCreateOfficeExpenses: false,
@@ -32,6 +36,8 @@ export function getPermissions(role?: UserRole): Permissions {
       return {
         canViewIncome: true,
         canManageUsers: true,
+        canManageEmployees: true,
+        canViewEmployees: true,
         canManageOwnerExpenses: true,
         canAccessOfficeExpenses: true,
         canCreateOfficeExpenses: true,
@@ -45,6 +51,8 @@ export function getPermissions(role?: UserRole): Permissions {
       return {
         canViewIncome: false,
         canManageUsers: false,
+        canManageEmployees: false,
+        canViewEmployees: true,
         canManageOwnerExpenses: false,
         canAccessOfficeExpenses: true,
         canCreateOfficeExpenses: true,
@@ -58,6 +66,8 @@ export function getPermissions(role?: UserRole): Permissions {
       return {
         canViewIncome: true,
         canManageUsers: false,
+        canManageEmployees: false,
+        canViewEmployees: false,
         canManageOwnerExpenses: true,
         canAccessOfficeExpenses: false,
         canCreateOfficeExpenses: false,

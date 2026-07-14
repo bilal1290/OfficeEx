@@ -1,9 +1,16 @@
-import { OFFICE_EXPENSE_CATEGORIES } from './constants';
+import { FIXED_EXPENSE_AMOUNT_CATEGORIES } from './constants';
 import { convertCurrency, resolveCurrency } from './currency';
+import {
+  computeOfficeSpendBreakdown,
+  sumFixedOfficeSpendForMonth,
+  sumTotalOfficeSpend,
+} from './office-totals';
+import { sumPaidSalaries } from './salaries';
 import type {
   CurrencyConversion,
   FilterState,
   FinancialSummary,
+  FixedMonthlyExpenses,
   IncomeRecord,
   MonthlyBalance,
   OfficeExpenseRecord,
@@ -72,10 +79,10 @@ export function computeFinancialSummary(
   officeExpenses: OfficeExpenseRecord[],
   filter: FilterState,
   conversion: CurrencyConversion,
+  fixedRecords: FixedMonthlyExpenses[] = [],
 ): FinancialSummary {
   const filteredIncomes = filterIncomes(incomes, filter);
   const filteredOwnerExpenses = filterOwnerExpenses(ownerExpenses, filter);
-  const filteredOfficeExpenses = filterOfficeExpenses(officeExpenses, filter);
 
   const companyShareTotal = filteredIncomes.reduce(
     (sum, income) =>
@@ -87,10 +94,11 @@ export function computeFinancialSummary(
       sum + toDisplay(expense.amount, expense.currency, conversion),
     0,
   );
-  const officeExpensesTotal = filteredOfficeExpenses.reduce(
-    (sum, expense) =>
-      sum + toDisplay(expense.amount, expense.currency, conversion),
-    0,
+  const officeExpensesTotal = sumTotalOfficeSpend(
+    fixedRecords,
+    officeExpenses,
+    filter,
+    conversion,
   );
 
   const totalIncome = companyShareTotal;
@@ -115,12 +123,12 @@ export function computeSectionBalances(
   users: UserProfile[],
   filter: FilterState,
   conversion: CurrencyConversion,
+  fixedRecords: FixedMonthlyExpenses[] = [],
 ): SectionBalance[] {
   const sections: SectionBalance[] = [];
 
   const filteredIncomes = filterIncomes(incomes, filter);
   const filteredOwnerExpenses = filterOwnerExpenses(ownerExpenses, filter);
-  const filteredOfficeExpenses = filterOfficeExpenses(officeExpenses, filter);
 
   const owners =
     filter.ownerId === 'all'
@@ -150,23 +158,20 @@ export function computeSectionBalances(
     });
   }
 
-  for (const cat of OFFICE_EXPENSE_CATEGORIES) {
-    const catTotal = filteredOfficeExpenses
-      .filter((e) => e.category === cat.value)
-      .reduce(
-        (sum, expense) =>
-          sum + toDisplay(expense.amount, expense.currency, conversion),
-        0,
-      );
+  const officeLines = computeOfficeSpendBreakdown(
+    fixedRecords,
+    officeExpenses,
+    filter,
+    conversion,
+  );
 
-    if (catTotal > 0 || filter.ownerId === 'all') {
-      sections.push({
-        label: cat.label,
-        income: 0,
-        expenses: catTotal,
-        balance: -catTotal,
-      });
-    }
+  for (const line of officeLines) {
+    sections.push({
+      label: line.label,
+      income: 0,
+      expenses: line.amount,
+      balance: -line.amount,
+    });
   }
 
   return sections;
@@ -231,6 +236,7 @@ export function computeMonthlyBalances(
   officeExpenses: OfficeExpenseRecord[],
   year: number,
   conversion: CurrencyConversion,
+  fixedRecords: FixedMonthlyExpenses[] = [],
 ): MonthlyBalance[] {
   return Array.from({ length: 12 }, (_, i) => {
     const month = i + 1;
@@ -259,7 +265,8 @@ export function computeMonthlyBalances(
         (sum, record) =>
           sum + toDisplay(record.amount, record.currency, conversion),
         0,
-      );
+      ) +
+      sumFixedOfficeSpendForMonth(fixedRecords, year, month, conversion);
 
     return { month, year, income, expenses, balance: income - expenses };
   });
@@ -271,6 +278,7 @@ export function buildTransactions(
   officeExpenses: OfficeExpenseRecord[],
   users: UserProfile[],
   filter: FilterState,
+  fixedRecords: FixedMonthlyExpenses[] = [],
 ): Transaction[] {
   const userMap = new Map(users.map((u) => [u.uid, u.displayName]));
   const transactions: Transaction[] = [];
@@ -328,6 +336,60 @@ export function buildTransactions(
     });
   }
 
+  const fixedMonths =
+    filter.month === 'all'
+      ? Array.from({ length: 12 }, (_, index) => index + 1)
+      : [filter.month as number];
+
+  for (const month of fixedMonths) {
+    const record = fixedRecords.find(
+      (item) => item.year === filter.year && item.month === month,
+    );
+    if (!record) continue;
+
+    const paidSalaries = sumPaidSalaries(record.salaryEntries ?? []);
+    if (paidSalaries > 0) {
+      transactions.push({
+        id: `fixed-${record.id}-salaries`,
+        type: 'office_expense',
+        amount: paidSalaries,
+        currency: record.currency,
+        month,
+        year: filter.year,
+        name: 'Employee Salaries',
+        description: 'Paid salaries (monthly checklist)',
+        createdAt: record.updatedAt ?? Date.now(),
+        transactionAt: record.updatedAt ?? Date.now(),
+        updatedAt: record.updatedAt,
+        category: 'salaries',
+      });
+    }
+
+    for (const category of FIXED_EXPENSE_AMOUNT_CATEGORIES) {
+      const amount = record.amounts[category.value] ?? 0;
+      if (amount <= 0) continue;
+
+      transactions.push({
+        id: `fixed-${record.id}-${category.value}`,
+        type: 'office_expense',
+        amount,
+        currency: record.currency,
+        month,
+        year: filter.year,
+        name: category.label,
+        description: 'Fixed monthly expense',
+        createdAt: record.updatedAt ?? Date.now(),
+        transactionAt: record.updatedAt ?? Date.now(),
+        updatedAt: record.updatedAt,
+        category:
+          category.value === 'electricity' ||
+          category.value === 'rent'
+            ? category.value
+            : 'miscellaneous',
+      });
+    }
+  }
+
   return transactions.sort(
     (a, b) =>
       (b.transactionAt ?? b.createdAt) - (a.transactionAt ?? a.createdAt),
@@ -366,23 +428,24 @@ export function getExpenseCategoryBreakdown(
   officeExpenses: OfficeExpenseRecord[],
   filter: FilterState,
   conversion: CurrencyConversion,
+  fixedRecords: FixedMonthlyExpenses[] = [],
 ): { name: string; value: number; category?: string }[] {
-  const filteredOffice = filterOfficeExpenses(officeExpenses, filter);
   const filteredOwner = filterOwnerExpenses(ownerExpenses, filter);
-
   const breakdown: { name: string; value: number; category?: string }[] = [];
 
-  for (const cat of OFFICE_EXPENSE_CATEGORIES) {
-    const total = filteredOffice
-      .filter((e) => e.category === cat.value)
-      .reduce(
-        (sum, expense) =>
-          sum + toDisplay(expense.amount, expense.currency, conversion),
-        0,
-      );
-    if (total > 0) {
-      breakdown.push({ name: cat.label, value: total, category: cat.value });
-    }
+  for (const line of computeOfficeSpendBreakdown(
+    fixedRecords,
+    officeExpenses,
+    filter,
+    conversion,
+  )) {
+    breakdown.push({
+      name: line.label,
+      value: line.amount,
+      category: line.id.startsWith('additional-')
+        ? line.id.replace('additional-', '')
+        : line.id,
+    });
   }
 
   const ownerTotal = filteredOwner.reduce(

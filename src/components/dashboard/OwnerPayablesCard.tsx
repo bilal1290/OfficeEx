@@ -12,9 +12,9 @@ export function OwnerPayablesCard({ payables, compact }: OwnerPayablesCardProps)
   const { formatDisplay, displayCurrency } = useCurrency();
 
   return (
-    <Card className="payables-card">
+    <Card className="payables-card overview-payables">
       <CardHeader
-        title="Project Owner Payables"
+        title="Payables"
         subtitle={`${COMPANY_SHARE_RATE * 100}% company share minus owner expenses · ${displayCurrency}`}
       />
       <div className="table-wrapper">

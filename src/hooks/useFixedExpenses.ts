@@ -18,12 +18,18 @@ export function getFixedExpenseId(year: number, month: number): string {
   return `${year}-${month}`;
 }
 
-export function useFixedExpenses() {
+export function useFixedExpenses(enabled = true) {
   const [records, setRecords] = useState<FixedMonthlyExpenses[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
+
     if (!db) {
       setLoading(false);
       return;
@@ -50,7 +56,7 @@ export function useFixedExpenses() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [enabled]);
 
   const getRecord = (year: number, month: number): FixedMonthlyExpenses => {
     const id = getFixedExpenseId(year, month);
@@ -74,20 +80,40 @@ export function useFixedExpenses() {
   ) => {
     if (!db) throw new Error('Database is not configured');
 
-    const id = getFixedExpenseId(year, month);
+    const existing = getRecord(year, month);
     const record: FixedMonthlyExpenses = {
-      id,
-      month,
-      year,
+      ...existing,
       amounts,
-      currency,
+      currency: currency ?? existing.currency,
       updatedAt: Date.now(),
       updatedBy,
     };
 
-    await set(ref(db, `fixedExpenses/${id}`), record);
+    await set(ref(db, `fixedExpenses/${record.id}`), record);
     return record;
   };
 
-  return { records, loading, error, getRecord, saveAmounts };
+  const saveSalaryEntries = async (
+    year: number,
+    month: number,
+    salaryEntries: FixedMonthlyExpenses['salaryEntries'],
+    updatedBy: string,
+    currency?: FixedMonthlyExpenses['currency'],
+  ) => {
+    if (!db) throw new Error('Database is not configured');
+
+    const existing = getRecord(year, month);
+    const record: FixedMonthlyExpenses = {
+      ...existing,
+      salaryEntries,
+      currency: currency ?? existing.currency,
+      updatedAt: Date.now(),
+      updatedBy,
+    };
+
+    await set(ref(db, `fixedExpenses/${record.id}`), record);
+    return record;
+  };
+
+  return { records, loading, error, getRecord, saveAmounts, saveSalaryEntries };
 }

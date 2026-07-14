@@ -2,7 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { TopNav } from './TopNav';
 
 const pageTitles: Record<string, { title: string; subtitle?: string }> = {
-  '/': { title: 'Financial Overview', subtitle: 'Company ledger at a glance' },
+  '/': { title: 'Overview', subtitle: 'Balance, cash flow, and spends' },
   '/income': { title: 'Project Income', subtitle: 'Track revenue & company share' },
   '/expenses': { title: 'Owner Expenses', subtitle: 'Costs that offset your company share' },
   '/users': { title: 'Team', subtitle: 'Roles, access & project owners' },

@@ -17,7 +17,7 @@ export function Header({
   onToggleMobileMenu,
 }: HeaderProps) {
   const { logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedColorScheme, toggleColorScheme } = useTheme();
 
   return (
     <header className="header">
@@ -36,8 +36,8 @@ export function Header({
         </div>
       </div>
       <div className="header-actions">
-        <Button variant="ghost" size="sm" onClick={toggleTheme}>
-          {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+        <Button variant="ghost" size="sm" onClick={toggleColorScheme}>
+          {resolvedColorScheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </Button>
         <Button variant="ghost" size="sm" onClick={logout}>
           <LogOut size={18} />

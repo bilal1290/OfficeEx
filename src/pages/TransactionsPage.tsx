@@ -4,6 +4,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useIncomes } from '../hooks/useIncomes';
 import { useOfficeExpenses, useOwnerExpenses } from '../hooks/useExpenses';
 import { useUsers } from '../hooks/useUsers';
+import { useFixedExpenses } from '../hooks/useFixedExpenses';
 import { buildTransactions, filterOfficeExpenses, filterOwnerExpenses } from '../lib/calculations';
 import { buildExpenseLedgerPdf } from '../lib/expense-pdf-export';
 import { formatDateTime } from '../lib/datetime';
@@ -27,8 +28,11 @@ export function TransactionsPage() {
     permissions.canAccessOfficeExpenses,
   );
   const { users, loading: usersLoading } = useUsers();
+  const { records: fixedRecords, loading: fixedLoading } = useFixedExpenses(
+    permissions.canAccessOfficeExpenses,
+  );
 
-  const loading = incomesLoading || ownerLoading || officeLoading || usersLoading;
+  const loading = incomesLoading || ownerLoading || officeLoading || usersLoading || fixedLoading;
 
   const effectiveFilter = isAdmin
     ? filter
@@ -40,6 +44,7 @@ export function TransactionsPage() {
     officeExpenses,
     users,
     effectiveFilter,
+    fixedRecords,
   ).filter((transaction) =>
     permissions.canViewIncome ? true : transaction.type !== 'income',
   );

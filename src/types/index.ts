@@ -145,6 +145,26 @@ export interface FixedMonthlyExpenses {
   year: number;
   amounts: Record<FixedExpenseCategory, number>;
   currency?: CurrencyCode;
+  salaryEntries?: MonthlySalaryEntry[];
   updatedAt?: number;
   updatedBy?: string;
+}
+
+export interface Employee {
+  id: string;
+  name: string;
+  title?: string;
+  monthlySalary: number;
+  currency?: CurrencyCode;
+  active: boolean;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface MonthlySalaryEntry {
+  employeeId: string;
+  employeeName: string;
+  amount: number;
+  paid: boolean;
+  note?: string;
 }

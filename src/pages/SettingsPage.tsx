@@ -3,17 +3,16 @@ import {
   Building2,
   Coins,
   Fingerprint,
-  Moon,
   ScrollText,
   Shield,
   Sun,
   User,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { ThemePicker } from '../components/settings/ThemePicker';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
@@ -38,7 +37,6 @@ const SECTIONS: {
 
 export function SettingsPage() {
   const { profile, isAdmin } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const {
     displayCurrency,
     setDisplayCurrency,
@@ -246,24 +244,7 @@ export function SettingsPage() {
 
           {activeSection === 'appearance' && (
             <div className="settings-section">
-              <div className="settings-field settings-field-row">
-                <div className="settings-field-main">
-                  {theme === 'light' ? <Sun size={18} /> : <Moon size={18} />}
-                  <div>
-                    <p className="settings-label">Color theme</p>
-                    <p className="settings-value">
-                      {theme === 'light' ? 'Light mode' : 'Dark mode'}
-                    </p>
-                  </div>
-                </div>
-                <Button variant="secondary" onClick={toggleTheme}>
-                  Switch to {theme === 'light' ? 'Dark' : 'Light'}
-                </Button>
-              </div>
-              <p className="settings-block-note">
-                OfficeEx uses a bottle green palette across navigation, buttons,
-                and highlights.
-              </p>
+              <ThemePicker />
             </div>
           )}
 

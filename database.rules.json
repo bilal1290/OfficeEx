@@ -34,6 +34,13 @@
         ".validate": "newData.hasChildren(['id', 'month', 'year', 'amounts'])"
       }
     },
+    "employees": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$employeeId": {
+        ".validate": "newData.hasChildren(['id', 'name', 'monthlySalary', 'active', 'createdAt'])"
+      }
+    },
     "settings": {
       ".read": "auth != null",
       "usdToPkr": {

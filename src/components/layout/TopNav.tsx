@@ -37,7 +37,7 @@ const MOBILE_DOCK_SLOTS = 3;
 
 export function TopNav() {
   const { profile, permissions, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedColorScheme, toggleColorScheme } = useTheme();
   const location = useLocation();
   const [hubOpen, setHubOpen] = useState(false);
 
@@ -293,8 +293,12 @@ export function TopNav() {
                 </span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+            <Button variant="ghost" size="sm" onClick={toggleColorScheme} aria-label="Toggle theme">
+              {resolvedColorScheme === 'dark' ? (
+                <Sun size={18} />
+              ) : (
+                <Moon size={18} />
+              )}
             </Button>
             <Button
               variant="ghost"

@@ -1,5 +1,6 @@
 import { downloadExpensesPdf, type ExpensePdfLine, type ExpensePdfSection } from './expense-pdf';
-import { FIXED_EXPENSE_CATEGORIES } from './constants';
+import { FIXED_EXPENSE_AMOUNT_CATEGORIES } from './constants';
+import { sumPaidSalaries } from './salaries';
 import { resolveCurrency } from './currency';
 import type {
   CurrencyCode,
@@ -93,7 +94,35 @@ export function buildOfficeExpensesPdf(
   const sections: ExpensePdfSection[] = [];
 
   if (fixedRecord) {
-    const fixedLines: ExpensePdfLine[] = FIXED_EXPENSE_CATEGORIES.filter(
+    const salaryEntries = fixedRecord.salaryEntries ?? [];
+    const paidSalaryTotal = sumPaidSalaries(salaryEntries);
+
+    if (salaryEntries.length > 0) {
+      const salaryLines: ExpensePdfLine[] = salaryEntries.map((entry) => ({
+        date: '—',
+        type: 'Salary',
+        name: entry.employeeName,
+        detail: entry.paid ? 'Paid' : 'Unpaid',
+        amount: formatDisplayLine(
+          entry.paid ? entry.amount : 0,
+          fixedRecord.currency,
+          displayCurrency,
+          rates,
+        ),
+        currency: resolveCurrency(fixedRecord.currency),
+      }));
+
+      sections.push({
+        title: 'Employee Salaries',
+        lines: salaryLines,
+        subtotal: formatCurrencyAmount(
+          toDisplayAmount(paidSalaryTotal, fixedRecord.currency, displayCurrency, rates),
+          displayCurrency,
+        ),
+      });
+    }
+
+    const fixedLines: ExpensePdfLine[] = FIXED_EXPENSE_AMOUNT_CATEGORIES.filter(
       (category) => (fixedRecord.amounts[category.value] ?? 0) > 0,
     ).map((category) => ({
       date: '—',
@@ -109,17 +138,19 @@ export function buildOfficeExpensesPdf(
       currency: resolveCurrency(fixedRecord.currency),
     }));
 
-    const fixedTotal = FIXED_EXPENSE_CATEGORIES.reduce(
-      (sum, category) =>
-        sum +
-        toDisplayAmount(
-          fixedRecord.amounts[category.value] ?? 0,
-          fixedRecord.currency,
-          displayCurrency,
-          rates,
-        ),
-      0,
-    );
+    const fixedTotal =
+      FIXED_EXPENSE_AMOUNT_CATEGORIES.reduce(
+        (sum, category) =>
+          sum +
+          toDisplayAmount(
+            fixedRecord.amounts[category.value] ?? 0,
+            fixedRecord.currency,
+            displayCurrency,
+            rates,
+          ),
+        0,
+      ) +
+      toDisplayAmount(paidSalaryTotal, fixedRecord.currency, displayCurrency, rates);
 
     if (fixedLines.length > 0) {
       sections.push({
@@ -154,7 +185,7 @@ export function buildOfficeExpensesPdf(
   }
 
   const fixedTotal = fixedRecord
-    ? FIXED_EXPENSE_CATEGORIES.reduce(
+    ? FIXED_EXPENSE_AMOUNT_CATEGORIES.reduce(
         (sum, category) =>
           sum +
           toDisplayAmount(
@@ -164,6 +195,12 @@ export function buildOfficeExpensesPdf(
             rates,
           ),
         0,
+      ) +
+      toDisplayAmount(
+        sumPaidSalaries(fixedRecord.salaryEntries ?? []),
+        fixedRecord.currency,
+        displayCurrency,
+        rates,
       )
     : 0;
 

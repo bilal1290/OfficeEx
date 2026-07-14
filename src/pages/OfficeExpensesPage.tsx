@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { FileDown, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { FixedExpensesSection } from '../components/expenses/FixedExpensesSection';
+import { SalarySection } from '../components/expenses/SalarySection';
+import { OfficeSpendSummary } from '../components/expenses/OfficeSpendSummary';
 import { useOfficeExpenses } from '../hooks/useExpenses';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -23,6 +25,7 @@ import {
 } from '../lib/datetime';
 import { getYearOptions } from '../lib/utils';
 import { buildOfficeExpensesPdf } from '../lib/expense-pdf-export';
+import { FIXED_EXPENSE_AMOUNT_CATEGORIES } from '../lib/constants';
 import {
   getFixedExpenseId,
   useFixedExpenses,
@@ -76,10 +79,14 @@ export function OfficeExpensesPage() {
     ) ?? null;
 
   const handleExportPdf = () => {
-    const hasFixed =
+    const hasFixedAmounts =
       fixedRecord &&
-      Object.values(fixedRecord.amounts).some((amount) => amount > 0);
-    if (!hasFixed && visibleExpenses.length === 0) {
+      FIXED_EXPENSE_AMOUNT_CATEGORIES.some(
+        (category) => (fixedRecord.amounts[category.value] ?? 0) > 0,
+      );
+    const hasSalaries =
+      fixedRecord && (fixedRecord.salaryEntries?.length ?? 0) > 0;
+    if (!hasFixedAmounts && !hasSalaries && visibleExpenses.length === 0) {
       window.alert('No office expenses to export for the selected period.');
       return;
     }
@@ -166,12 +173,27 @@ export function OfficeExpensesPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page office-page">
       <FilterBar showOwnerFilter={false} />
 
-      <FixedExpensesSection />
+      <OfficeSpendSummary
+        fixedRecords={fixedRecords}
+        additionalExpenses={expenses}
+      />
 
-      <Card>
+      <div className="office-sections">
+        {permissions.canViewEmployees && (
+          <section className="office-section office-section-salaries">
+            <SalarySection />
+          </section>
+        )}
+
+        <section className="office-section office-section-fixed">
+          <FixedExpensesSection />
+        </section>
+
+        <section className="office-section office-section-additional">
+      <Card className="office-additional-card">
         <CardHeader
           title="Additional Office Expenses"
           subtitle={
@@ -281,6 +303,8 @@ export function OfficeExpensesPage() {
           </table>
         </div>
       </Card>
+        </section>
+      </div>
 
       <Modal
         isOpen={modalOpen}

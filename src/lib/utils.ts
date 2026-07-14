@@ -33,3 +33,11 @@ export function clsx(...classes: (string | false | null | undefined)[]): string 
 export function generateId(): string {
   return crypto.randomUUID();
 }
+
+export function parseAmount(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseFloat(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}

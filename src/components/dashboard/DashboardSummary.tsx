@@ -1,8 +1,15 @@
-import { ArrowDownRight, ArrowUpRight, Scale, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { useCurrency } from '../../context/CurrencyContext';
 import { getMonthLabel } from '../../lib/utils';
-import { COMPANY_SHARE_RATE } from '../../lib/constants';
-import type { FilterState } from '../../types';
+import type {
+  FilterState,
+  FixedMonthlyExpenses,
+  IncomeRecord,
+  OfficeExpenseRecord,
+  OwnerExpenseRecord,
+} from '../../types';
+import { IncomeVsExpensesChart } from '../charts/IncomeVsExpensesChart';
+import { OverviewSpendPanel } from './OverviewSpendPanel';
 
 interface DashboardSummaryProps {
   totalIncome: number;
@@ -10,6 +17,10 @@ interface DashboardSummaryProps {
   netBalance: number;
   monthlyProfitLoss: number;
   filter: FilterState;
+  incomes: IncomeRecord[];
+  ownerExpenses: OwnerExpenseRecord[];
+  officeExpenses: OfficeExpenseRecord[];
+  fixedRecords?: FixedMonthlyExpenses[];
 }
 
 export function DashboardSummary({
@@ -18,6 +29,10 @@ export function DashboardSummary({
   netBalance,
   monthlyProfitLoss,
   filter,
+  incomes,
+  ownerExpenses,
+  officeExpenses,
+  fixedRecords = [],
 }: DashboardSummaryProps) {
   const { formatDisplay } = useCurrency();
 
@@ -28,90 +43,73 @@ export function DashboardSummary({
 
   const expenseRatio =
     totalIncome > 0 ? Math.min(100, Math.round((totalExpenses / totalIncome) * 100)) : 0;
-  const healthAngle = totalIncome > 0 ? (netBalance / totalIncome) * 360 : 0;
   const isPositive = netBalance >= 0;
 
-  const metrics = [
+  const kpis = [
+    { key: 'income', label: 'Income', value: totalIncome, tone: 'income' as const },
+    { key: 'expenses', label: 'Expenses', value: totalExpenses, tone: 'expense' as const },
     {
-      key: 'income',
-      label: 'Income',
-      value: totalIncome,
-      hint: `${COMPANY_SHARE_RATE * 100}% company share`,
-      icon: TrendingUp,
-      tone: 'income' as const,
-    },
-    {
-      key: 'expenses',
-      label: 'Expenses',
-      value: totalExpenses,
-      hint: 'Office + owner',
-      icon: TrendingDown,
-      tone: 'expense' as const,
-    },
-    {
-      key: 'profit',
-      label: 'Profit / Loss',
+      key: 'margin',
+      label: 'Margin',
       value: monthlyProfitLoss,
-      hint: periodLabel,
-      icon: Wallet,
       tone: monthlyProfitLoss >= 0 ? ('income' as const) : ('expense' as const),
     },
   ];
 
   return (
-    <section className="dashboard-summary" aria-label="Financial snapshot">
-      <div className="summary-hero">
-        <div
-          className="summary-ring"
-          style={{
-            background: `conic-gradient(
-              var(--primary) 0deg ${Math.max(healthAngle, 8)}deg,
-              var(--border) ${Math.max(healthAngle, 8)}deg 360deg
-            )`,
-          }}
-          aria-hidden
-        >
-          <div className="summary-ring-inner">
-            <Scale size={18} strokeWidth={2} />
-          </div>
-        </div>
-
-        <div className="summary-hero-copy">
-          <span className="summary-eyebrow">{periodLabel}</span>
-          <p className="summary-label">Net balance</p>
-          <p className={`summary-balance ${isPositive ? 'text-success' : 'text-danger'}`}>
+    <section className="overview-panel" aria-label="Financial overview">
+      <header className="overview-head">
+        <div className="overview-balance-block">
+          <p className="overview-period">{periodLabel}</p>
+          <p className="overview-label">Net balance</p>
+          <p className={`overview-balance ${isPositive ? 'is-positive' : 'is-negative'}`}>
             {formatDisplay(netBalance)}
           </p>
-          <div className="summary-meta">
-            <span className={`summary-trend ${isPositive ? 'up' : 'down'}`}>
-              {isPositive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-              {isPositive ? 'In surplus' : 'In deficit'}
+          <p className="overview-status">
+            <span className={`overview-status-badge ${isPositive ? 'up' : 'down'}`}>
+              {isPositive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+              {isPositive ? 'Surplus' : 'Deficit'}
             </span>
-            <span className="summary-ratio">
-              {expenseRatio}% of income spent
-            </span>
-          </div>
+            <span className="overview-status-meta">{expenseRatio}% of income spent</span>
+          </p>
         </div>
 
-        <div className="summary-bar" aria-hidden>
-          <div className="summary-bar-income" style={{ flex: totalIncome || 1 }} />
-          <div className="summary-bar-expense" style={{ flex: totalExpenses || 0.001 }} />
+        <div className="overview-kpis">
+          {kpis.map(({ key, label, value, tone }) => (
+            <div key={key} className={`overview-kpi overview-kpi-${tone}`}>
+              <span className="overview-kpi-label">{label}</span>
+              <span className="overview-kpi-value">{formatDisplay(value)}</span>
+            </div>
+          ))}
         </div>
+      </header>
+
+      <div className="overview-flow-bar" aria-hidden>
+        <span
+          className="overview-flow-bar-income"
+          style={{ flex: totalIncome || 1 }}
+        />
+        <span
+          className="overview-flow-bar-expense"
+          style={{ flex: totalExpenses || 0.001 }}
+        />
       </div>
 
-      <div className="summary-metrics">
-        {metrics.map(({ key, label, value, hint, icon: Icon, tone }) => (
-          <div key={key} className={`summary-metric summary-metric-${tone}`}>
-            <div className="summary-metric-icon">
-              <Icon size={16} strokeWidth={2.25} />
-            </div>
-            <div className="summary-metric-body">
-              <span className="summary-metric-label">{label}</span>
-              <span className="summary-metric-value">{formatDisplay(value)}</span>
-              <span className="summary-metric-hint">{hint}</span>
-            </div>
-          </div>
-        ))}
+      <div className="overview-body">
+        <IncomeVsExpensesChart
+          embedded
+          incomes={incomes}
+          ownerExpenses={ownerExpenses}
+          officeExpenses={officeExpenses}
+          fixedRecords={fixedRecords}
+          year={filter.year}
+        />
+        <OverviewSpendPanel
+          ownerExpenses={ownerExpenses}
+          officeExpenses={officeExpenses}
+          fixedRecords={fixedRecords}
+          filter={filter}
+        />
       </div>
     </section>
   );

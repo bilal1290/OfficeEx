@@ -8,7 +8,7 @@ import {
   getFixedExpenseId,
   useFixedExpenses,
 } from '../../hooks/useFixedExpenses';
-import { FIXED_EXPENSE_CATEGORIES } from '../../lib/constants';
+import { FIXED_EXPENSE_AMOUNT_CATEGORIES } from '../../lib/constants';
 import { Button } from '../ui/Button';
 import { Card, CardHeader } from '../ui/Card';
 import { CurrencySelect } from '../ui/CurrencySelect';
@@ -37,7 +37,10 @@ export function FixedExpensesSection() {
     setSaved(false);
   }, [records, year, month, displayCurrency]);
 
-  const total = Object.values(amounts).reduce((sum, value) => sum + value, 0);
+  const total = FIXED_EXPENSE_AMOUNT_CATEGORIES.reduce(
+    (sum, category) => sum + (amounts[category.value] ?? 0),
+    0,
+  );
   const totalInDisplay = convertToDisplay(total, currency);
 
   const handleAmountChange = (category: FixedExpenseCategory, value: string) => {
@@ -68,7 +71,7 @@ export function FixedExpensesSection() {
     <Card className="fixed-expenses-card">
       <CardHeader
         title="Fixed Monthly Expenses"
-        subtitle="Update amounts for standard office expense categories"
+        subtitle="Rent, utilities & maintenance — salaries tracked separately"
         action={
           permissions.canUpdateFixedExpenses ? (
             <Button onClick={handleSave} disabled={submitting}>
@@ -90,7 +93,7 @@ export function FixedExpensesSection() {
       )}
 
       <div className="fixed-expenses-grid">
-        {FIXED_EXPENSE_CATEGORIES.map((category) => (
+        {FIXED_EXPENSE_AMOUNT_CATEGORIES.map((category) => (
           <div key={category.value} className="fixed-expense-item">
             <label className="fixed-expense-label" htmlFor={category.value}>
               {category.label}

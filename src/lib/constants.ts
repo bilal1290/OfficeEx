@@ -58,6 +58,11 @@ export const FIXED_EXPENSE_CATEGORIES: {
   { value: 'misc', label: 'Miscellaneous' },
 ];
 
+/** Fixed expense inputs shown in the grid — salaries are tracked separately. */
+export const FIXED_EXPENSE_AMOUNT_CATEGORIES = FIXED_EXPENSE_CATEGORIES.filter(
+  (category) => category.value !== 'salaries',
+);
+
 export const USER_ROLES: {
   value: UserRole;
   label: string;

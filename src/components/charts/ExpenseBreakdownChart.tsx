@@ -11,6 +11,7 @@ import { getExpenseCategoryBreakdown } from '../../lib/calculations';
 import { CATEGORY_COLORS, CHART_COLORS } from '../../lib/constants';
 import type {
   FilterState,
+  FixedMonthlyExpenses,
   OfficeExpenseCategory,
   OfficeExpenseRecord,
   OwnerExpenseRecord,
@@ -20,7 +21,9 @@ import { ChartEmpty, ChartShell, ChartTooltip } from './ChartTooltip';
 interface ExpenseBreakdownChartProps {
   ownerExpenses: OwnerExpenseRecord[];
   officeExpenses: OfficeExpenseRecord[];
+  fixedRecords?: FixedMonthlyExpenses[];
   filter: FilterState;
+  embedded?: boolean;
 }
 
 const CHART_HEIGHT = 168;
@@ -28,7 +31,9 @@ const CHART_HEIGHT = 168;
 export function ExpenseBreakdownChart({
   ownerExpenses,
   officeExpenses,
+  fixedRecords = [],
   filter,
+  embedded = false,
 }: ExpenseBreakdownChartProps) {
   const { displayCurrency, rates, formatDisplay } = useCurrency();
   const conversion = { displayCurrency, rates };
@@ -37,6 +42,7 @@ export function ExpenseBreakdownChart({
     officeExpenses,
     filter,
     conversion,
+    fixedRecords,
   );
 
   const colors = data.map(
@@ -47,68 +53,84 @@ export function ExpenseBreakdownChart({
   );
 
   if (data.length === 0) {
+    const emptyContent = (
+      <ChartShell title="Spend mix" subtitle="By category">
+        <ChartEmpty message="No expense data for this period" />
+      </ChartShell>
+    );
+
+    if (embedded) {
+      return <div className="summary-chart-panel">{emptyContent}</div>;
+    }
+
     return (
       <Card className="chart-card" padding={false}>
-        <ChartShell title="Spend mix" subtitle="By category">
-          <ChartEmpty message="No expense data for this period" />
-        </ChartShell>
+        {emptyContent}
       </Card>
     );
   }
 
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
+  const content = (
+    <ChartShell title="Spend mix" subtitle={`${displayCurrency} · ${data.length} categories`}>
+      <div className="donut-layout">
+        <div className="chart-container chart-container-donut">
+          <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={42}
+                outerRadius={68}
+                paddingAngle={2}
+                stroke="none"
+              >
+                {data.map((entry, index) => (
+                  <Cell key={entry.name} fill={colors[index]} />
+                ))}
+              </Pie>
+              <Tooltip
+                content={
+                  <ChartTooltip formatter={(value) => formatDisplay(Number(value))} />
+                }
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="donut-center">
+            <span className="donut-center-label">Total</span>
+            <span className="donut-center-value">{formatDisplay(total)}</span>
+          </div>
+        </div>
+
+        <ul className="donut-legend">
+          {data.slice(0, 5).map((entry, index) => (
+            <li key={entry.name} className="donut-legend-item">
+              <span className="donut-legend-dot" style={{ background: colors[index] }} />
+              <span className="donut-legend-name">{entry.name}</span>
+              <span className="donut-legend-pct">
+                {total > 0 ? Math.round((entry.value / total) * 100) : 0}%
+              </span>
+            </li>
+          ))}
+          {data.length > 5 && (
+            <li className="donut-legend-more">+{data.length - 5} more</li>
+          )}
+        </ul>
+      </div>
+    </ChartShell>
+  );
+
+  if (embedded) {
+    return <div className="summary-chart-panel">{content}</div>;
+  }
+
   return (
     <Card className="chart-card" padding={false}>
-      <ChartShell title="Spend mix" subtitle={`${displayCurrency} · ${data.length} categories`}>
-        <div className="donut-layout">
-          <div className="chart-container chart-container-donut">
-            <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
-              <PieChart>
-                <Pie
-                  data={data}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={42}
-                  outerRadius={68}
-                  paddingAngle={2}
-                  stroke="none"
-                >
-                  {data.map((entry, index) => (
-                    <Cell key={entry.name} fill={colors[index]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  content={
-                    <ChartTooltip formatter={(value) => formatDisplay(Number(value))} />
-                  }
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="donut-center">
-              <span className="donut-center-label">Total</span>
-              <span className="donut-center-value">{formatDisplay(total)}</span>
-            </div>
-          </div>
-
-          <ul className="donut-legend">
-            {data.slice(0, 5).map((entry, index) => (
-              <li key={entry.name} className="donut-legend-item">
-                <span className="donut-legend-dot" style={{ background: colors[index] }} />
-                <span className="donut-legend-name">{entry.name}</span>
-                <span className="donut-legend-pct">
-                  {total > 0 ? Math.round((entry.value / total) * 100) : 0}%
-                </span>
-              </li>
-            ))}
-            {data.length > 5 && (
-              <li className="donut-legend-more">+{data.length - 5} more</li>
-            )}
-          </ul>
-        </div>
-      </ChartShell>
+      {content}
     </Card>
   );
 }
