@@ -1,240 +1,444 @@
-# OfficeEx — Company Finance Manager
+# OfficeEx — Company Finance & Team Hub
 
-OfficeEx is a finance dashboard for tracking project income, owner expenses, and office costs. It uses a **60% company share** rule, supports **multi-currency** (USD, PKR, EUR, GBP), and gives each team member access based on their **role**.
+<p align="center">
+  <strong>Finance dashboard · Payroll · Team chat · Role-based access</strong><br/>
+  Track project income, owner & office expenses, employee payroll, attendance, and team messaging — all in one place.
+</p>
 
----
-
-## Table of Contents
-
-1. [Who Uses OfficeEx](#who-uses-officeex)
-2. [Signing In](#signing-in)
-3. [Navigation](#navigation)
-4. [Filters & Currency](#filters--currency)
-5. [Usage by Role](#usage-by-role)
-6. [Page Guide](#page-guide)
-7. [Business Rules & Formulas](#business-rules--formulas)
-8. [Administrator Guide](#administrator-guide)
-9. [Settings](#settings)
-10. [Developer Setup](#developer-setup)
-11. [Deploy & Android APK](#deploy--android-apk)
+<p align="center">
+  <img src="public/favicon.svg" alt="OfficeEx" width="64" height="64"/>
+</p>
 
 ---
 
-## Who Uses OfficeEx
+## At a glance
 
-| Role | Who it's for | Main job in the app |
-|------|----------------|---------------------|
-| **Administrator** | Company owner / finance lead | Full access — users, income, all expenses, dashboard, exchange rate |
-| **Project Owner** | Person running a project | Log project income and personal expenses that offset company share |
-| **Expense Viewer** | Office manager / accountant | Add and update office & fixed expenses only (no income access) |
-
-> The **first person to register** becomes the Administrator automatically.
-
----
-
-## Signing In
-
-You can sign in two ways:
-
-1. **Continue with Google** — uses your Google account photo and email
-2. **Email & password** — sign in or create an account on the Register page
-
-After sign-in, OfficeEx loads your **role** from the team database and shows only the pages you are allowed to use.
+| Area | Highlights |
+|------|------------|
+| **Finance** | 60% company share, multi-currency (USD · PKR · EUR · GBP), PDF export |
+| **Payroll** | Monthly salaries, payslips, leave deductions, email PDFs |
+| **HR** | Employee roster, attendance, leave requests, credential allotment |
+| **Chat** | Slack-style DMs, groups, @everyone, unread badges, quick switcher (⌘K) |
+| **Access** | Admin-configurable permissions per role · pending account approval |
+| **UX** | Light/dark + 5 theme palettes · mobile bottom nav · responsive chat |
 
 ---
 
-## Navigation
+## Table of contents
 
-| Page | Path | Who can see it |
-|------|------|----------------|
-| **Overview** | `/` | Admin, Project Owner |
-| **Income** | `/income` | Admin, Project Owner |
-| **Expenses** (My Expenses) | `/expenses` | Admin, Project Owner |
-| **Office** | `/office-expenses` | Admin, Expense Viewer |
-| **Ledger** | `/transactions` | All signed-in users |
-| **Team** | `/users` | Admin only |
-| **Settings** | `/settings` | All signed-in users |
-
-On **mobile**, the bottom tab bar shows the most-used pages. Tap **All** to open the full menu.
-
-Use the **sun/moon icon** in the header to switch light and dark mode.
-
----
-
-## Filters & Currency
-
-Most pages include a **filter toolbar** at the top:
-
-| Control | What it does |
-|---------|----------------|
-| **Month** | Show data for one month or **All months** in the selected year |
-| **Year** | Financial year to view |
-| **Owner** | Filter by project owner (admin only on income/expense pages) |
-| **Currency** | Display currency for totals, charts, and tables |
-| **Reset** | Return to current month + year |
-
-### Multi-currency notes
-
-- Each income or expense record stores its **original currency** (USD, PKR, EUR, GBP).
-- Totals on the dashboard and reports convert into your chosen **display currency**.
-- **Administrators** set **1 USD = ___ PKR** in Settings → Currency. PKR conversions use this rate.
+1. [Visual overview](#visual-overview)
+2. [Who uses OfficeEx](#who-uses-officeex)
+3. [Feature list](#feature-list)
+4. [Navigation map](#navigation-map)
+5. [Page guide](#page-guide)
+6. [Business rules & formulas](#business-rules--formulas)
+7. [Administrator guide](#administrator-guide)
+8. [Settings](#settings)
+9. [Developer setup](#developer-setup)
+10. [Deploy](#deploy)
+11. [Database schema](#database-schema)
+12. [Tech stack](#tech-stack)
 
 ---
 
-## Usage by Role
+## Visual overview
 
-### Administrator
+### System architecture
 
-- View the full **Overview** dashboard (charts, payables, section balances).
-- Manage **all** project income and owner expenses.
-- Manage **office expenses** (fixed monthly + additional line items).
-- Add, edit, and remove **team members** and assign roles.
-- Set the **USD → PKR** exchange rate.
-- Export **PDF** reports from expense and ledger pages.
+```mermaid
+flowchart TB
+  subgraph Client["OfficeEx Web / Android App"]
+    UI[React 19 + Vite UI]
+    AuthCtx[Auth & Permissions]
+    Finance[Finance Pages]
+    ChatUI[Chat UI]
+    Portal[Employee Portal]
+  end
 
-### Project Owner
+  subgraph Firebase["Firebase"]
+    FBAuth[Authentication]
+    RTDB[(Realtime Database)]
+    Functions[Cloud Functions]
+  end
 
-- Log **project income** each month (company share is calculated automatically).
-- Track **personal expenses** that reduce what you owe the company.
-- View your **net payable** on Overview and Income pages.
-- See **Ledger** entries for your own activity.
-- Cannot access Office Expenses or Team management.
+  subgraph Supabase["Supabase"]
+    PG[(PostgreSQL)]
+    Realtime[Realtime + Presence]
+  end
 
-### Expense Viewer
+  UI --> AuthCtx
+  AuthCtx --> FBAuth
+  Finance --> RTDB
+  Portal --> RTDB
+  AuthCtx --> RTDB
+  ChatUI --> Supabase
+  Functions --> FBAuth
+  Functions -.->|Payslip email| RTDB
+```
 
-- Land on **Office Expenses** after sign-in (no income dashboard).
-- Update **fixed monthly expenses** (electricity, salaries, rent, maintenance, misc).
-- **Add and edit** additional office expense line items.
-- View **Ledger** (expense transactions only).
-- Cannot see income, owner expenses, or team list.
+### App shell layout (desktop)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TopNav   [Logo]  OfficeEx          🔔 Chat   🌙 Theme   [Avatar ▾]         │
+├──────────────┬──────────────────────────────────────────────────────────────┤
+│   Sidebar    │  Page hero (title + subtitle)                                  │
+│              ├──────────────────────────────────────────────────────────────┤
+│  ◉ Dashboard │                                                              │
+│  ○ Income    │   Filter toolbar  [Month] [Year] [Owner] [Currency] [Reset]  │
+│  ○ Expenses  │                                                              │
+│  ○ Office    │   ┌─────────────────┐  ┌─────────────────┐                  │
+│  ○ Ledger    │   │   KPI / Chart     │  │   KPI / Chart   │                  │
+│  ○ Messages  │   └─────────────────┘  └─────────────────┘                  │
+│  ○ Team      │                                                              │
+│  ○ Settings  │   ┌──────────────────────────────────────────┐               │
+│              │   │  Data table / cards / forms              │               │
+│  ─────────   │   └──────────────────────────────────────────┘               │
+│  [User card] │                                                              │
+└──────────────┴──────────────────────────────────────────────────────────────┘
+```
+
+### App shell layout (mobile)
+
+```
+┌──────────────────────────────┐
+│  TopNav  OfficeEx    🔔  🌙  │
+├──────────────────────────────┤
+│                              │
+│     Scrollable page content  │
+│     (stacked KPIs & cards)   │
+│                              │
+├──────────────────────────────┤
+│  🏠  💬  🏢  ☰ All  ⚙️      │  ← bottom tab bar
+└──────────────────────────────┘
+```
+
+### Chat layout (Slack-inspired)
+
+```
+┌──────────────────┬────────────────────────────────────────────┐
+│  🔍 Search       │  # everyone · 3 members        Connected ● │
+│  ─────────────── │────────────────────────────────────────────│
+│  ★ Starred       │                                            │
+│    · Ali (DM)    │   [Avatar] Ali · 10:02 AM                    │
+│  ─────────────── │   Good morning team                          │
+│  Channels        │                                            │
+│    # everyone    │   [Avatar] You · 10:05 AM                    │
+│  ─────────────── │   @everyone standup at 11                    │
+│  Direct messages │                                            │
+│    Sara      2   │   ─── New messages ───                     │
+│    Omar          │                                            │
+│  ─────────────── │   [Avatar] Sara · 10:12 AM                 │
+│  [+ New DM]      │   On my way                                  │
+│                  ├────────────────────────────────────────────│
+│                  │  [ Message…                    ] [Send ➤]  │
+└──────────────────┴────────────────────────────────────────────┘
+```
+
+### Employee portal
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Employee portal · Welcome, Sara                            │
+│  [ Salary ]  [ Attendance ]  [ Leaves ]                     │
+├─────────────────────────────────────────────────────────────┤
+│  Current monthly salary          │  Salary breakdown        │
+│  PKR 85,000                      │  [Year ▾] [Month ▾]      │
+├──────────────────────────────────┴──────────────────────────┤
+│  June 2026 payslip                                          │
+│  Base · Leave · Bonus · Net payable · Paid / Pending        │
+├─────────────────────────────────────────────────────────────┤
+│  Attendance (employee): today only · past days read-only    │
+│  [P][P][P][—][—][…]  calendar grid + Mark attendance form   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Role & permission flow
+
+```mermaid
+flowchart LR
+  Login[Sign in] --> Profile[Load user profile]
+  Profile --> Approved{Account approved?}
+  Approved -->|No| Pending[Pending verification page]
+  Approved -->|Yes| RoleConfig[Load role permissions config]
+  RoleConfig --> Resolve[Resolve permissions for role]
+  Resolve --> Routes[Show nav + guard routes]
+  Admin[Admin] --> SettingsAccess[Settings → Role Access]
+  SettingsAccess --> Firebase[(settings/rolePermissions)]
+  Firebase --> RoleConfig
+```
+
+### Finance data flow
+
+```mermaid
+flowchart LR
+  PO[Project Owner] -->|logs income| Income[(incomes)]
+  Income -->|× 60%| Share[Company share]
+  PO -->|logs expenses| OwnerExp[(ownerExpenses)]
+  Share --> Payable[Net payable]
+  OwnerExp --> Payable
+  Viewer[Expense Viewer] --> Office[(officeExpenses)]
+  Viewer --> Fixed[(fixedExpenses + salaries)]
+  Fixed --> Payslips[(employeePayslips)]
+  Payslips --> Portal[Employee portal]
+  Admin --> Dashboard[Overview dashboard]
+  Income --> Dashboard
+  Office --> Dashboard
+  OwnerExp --> Dashboard
+```
+
+### Theme palettes
+
+| Preset | Swatch | Mood |
+|--------|--------|------|
+| **Forest** (default) | `#145A45` · `#1F9A72` | Bottle green ledger |
+| **Midnight** | `#1E3A5F` · `#6366F1` | Deep navy + violet |
+| **Ocean** | `#0E7490` · `#38BDF8` | Cool teal & sky |
+| **Slate** | `#334155` · `#64748B` | Neutral graphite |
+| **Rose** | `#9D174D` · `#FB7185` | Warm plum & coral |
+
+Each preset supports **Light**, **Dark**, or **System** appearance. Optional custom accent colors in Settings → Appearance.
 
 ---
 
-## Page Guide
+## Who uses OfficeEx
 
-### Overview (Dashboard)
+| Role | Who it's for | Typical access |
+|------|----------------|----------------|
+| **Administrator** | Owner / finance lead | Everything — users, roles, income, expenses, payroll, chat setup |
+| **Project Owner** | Project lead | Income, personal expenses, dashboard, ledger, chat |
+| **Expense Viewer** | Office manager / accountant | Office & fixed expenses, salaries, ledger (no income) |
+| **Employee** | Staff on payroll | Employee portal (salary, attendance, leaves), chat |
 
-Your financial snapshot for the filtered period:
+> The **first person to register** becomes Administrator automatically.  
+> New team sign-ups (non-first) start as **Project Owner** with **pending** approval until an admin verifies them.
 
-- **Net balance**, income, expenses, profit/loss summary
-- **Cash flow chart** — monthly income vs expenses
-- **Spend mix** — expense breakdown by category
-- **Owner share chart** — project income vs company cut
-- **Recent activity** — latest ledger entries
-- **Project owner payables** — who owes the company and how much
-- **Section balances** — income vs expenses per area
+---
 
-Use filters to change month/year/owner before reading the numbers.
+## Feature list
 
-### Income
+### Authentication & accounts
 
-- **Project owners** add monthly project income with amount, currency, date, and description.
-- **Company share (60%)** is calculated and stored automatically.
-- **Administrators** see all owners; **project owners** see only their own records.
-- The payables banner shows: **Net Payable = Company Share − Owner Expenses**.
+- Email/password and **Google** sign-in
+- Self-registration (team or employee)
+- **Pending / verified / rejected** account states
+- Profile photo upload
+- Admin: create user, link existing Firebase account (email or UID)
+- Admin: approve team accounts and verify employees (link to employee record)
 
-### Expenses (Owner Expenses)
+### Finance & reporting
 
-Personal costs that **reduce** what a project owner owes the company:
+- **Overview dashboard** — KPIs, cash-flow chart, spend mix, owner payables, recent activity
+- **Project income** — multi-currency, auto 60% company share
+- **Owner expenses** — offset company share per project owner
+- **Office expenses** — fixed monthly buckets + line items (rent, salaries, utilities, food, etc.)
+- **Ledger** — unified transaction history with filters
+- **PDF export** on expense and ledger pages
+- **Global filters** — month, year, owner (admin), display currency
 
-- Add expenses with name, amount, currency, date, and description.
-- Project owners manage **only their own** records.
-- Administrators can view and manage **everyone's** owner expenses.
+### Payroll & HR
 
-### Office Expenses
+- **Employee roster** — name, title, email, monthly salary, active/inactive
+- **Monthly payroll** — base salary, leave days, deductions, bonus, paid flag
+- **Payslip sync** to employee portal when payroll is saved
+- **Payslip email** (Firebase Cloud Function + jsPDF)
+- **Employee credentials** — admin allots login linked to employee record
+- **Attendance** — present / half day / leave / absent; monthly calendar summary
+- **Leave requests** — employees submit; admins approve/reject
 
-Two sections:
+### Team chat (Supabase)
 
-1. **Fixed Monthly Expenses** — standard categories (electricity, salaries, rent, maintenance, misc). Enter amounts for the filtered month and click **Save Amounts**.
-2. **Additional Office Expenses** — one-off items (salaries, rent, internet, food, etc.) with full details.
+- **#everyone** channel + custom groups + direct messages
+- Real-time messages, presence, connection status
+- **@mentions** with user picker
+- **Unread counts**, last-read tracking, “new messages” divider
+- **Starred** conversations, collapsible sidebar sections
+- **Quick switcher** — `⌘K` / `Ctrl+K`
+- Message grouping, copy, linkify, composer drafts
+- Desktop notifications + in-app toast stack
+- Admin: Supabase setup panel in Settings → Team Chat
 
-Use **Export PDF** to download a report for the selected period.
+### Access control
 
-### Ledger (Transactions)
+- Permission flags per page and action (income, office, users, chat, portal, etc.)
+- **Settings → Role Access** — admin edits permissions for Project Owner, Expense Viewer, Employee
+- Administrators always retain full access
+- Employees need **verified** account + linked **employeeId** for portal/salary
+- Employees can mark **today's attendance only**; admins edit any day
 
-A combined list of income and expense movements. Filter by month, year, and owner. Export to PDF when needed.
-
-### Team (Admin only)
-
-Manage who can access OfficeEx:
-
-| Action | How |
-|--------|-----|
-| **Add User** | Create email/password account + assign role |
-| **Link Existing** | Connect a Firebase Auth account (by email or UID) to a team profile |
-| **Edit User** | Change name, email, or role |
-| **Filter** | Filter list by role using the pills at the top |
-
-Each member shows an avatar (Google photo or generated placeholder), role badge, and join date.
-
-### Settings
+### Settings & personalization
 
 | Section | Contents |
 |---------|----------|
-| **Account** | Your name, email, role, and Firebase User ID |
-| **Currency** | Display currency; admin can set USD → PKR rate |
-| **Appearance** | Light / dark theme |
-| **Business Rules** | Summary of how calculations work |
+| **Account** | Profile photo, name, email, role, user ID |
+| **Currency** | Display currency; admin sets USD → PKR rate |
+| **Appearance** | Theme palette, light/dark/system, custom colors |
+| **Role Access** | Admin-only permission matrix per role |
+| **Team Chat** | Supabase connection & sync setup |
+| **Business Rules** | Company share and calculation summary |
+
+### Mobile & native
+
+- Responsive layout with **bottom navigation** on small screens
+- Chat and dashboard optimized for mobile scroll/viewport
+- **Capacitor Android** debug/release APK builds
+- Hash routing in native app (`/#/path`)
 
 ---
 
-## Business Rules & Formulas
+## Navigation map
+
+| Page | Path | Permission flag |
+|------|------|-----------------|
+| Overview | `/` | `canViewIncomeOnDashboard` |
+| Project Income | `/income` | `canViewIncome` |
+| My Expenses | `/expenses` | `canManageOwnerExpenses` |
+| Office Expenses | `/office-expenses` | `canAccessOfficeExpenses` |
+| Ledger | `/transactions` | `canViewExpenseTransactions` |
+| Messages | `/chat` | `canAccessChat` |
+| Team | `/users` | `canManageUsers` |
+| Employee Portal | `/my-salary` | `canAccessEmployeePortal` |
+| Pending | `/pending` | Unverified accounts |
+| Settings | `/settings` | All approved users |
+
+---
+
+## Page guide
+
+### Overview (Dashboard)
+
+Financial snapshot for the filtered period:
+
+- Net balance, income, expenses, profit/loss
+- Cash flow chart (monthly income vs expenses)
+- Spend mix by category
+- Owner share chart
+- Recent ledger activity
+- Project owner payables table/cards
+- Section balances
+
+### Income
+
+- Project owners log monthly income (amount, currency, date, description)
+- **Company share (60%)** calculated automatically
+- Payables banner: **Net Payable = Company Share − Owner Expenses**
+
+### Expenses (Owner)
+
+- Personal costs that reduce what a project owner owes the company
+- Project owners see only their records; admins see all
+
+### Office Expenses
+
+1. **Fixed monthly** — electricity, salaries, rent, maintenance, misc  
+2. **Salary payroll** — per-employee monthly entries, paid toggles, email on save  
+3. **Additional line items** — categorized office expenses  
+
+Export PDF for the selected period.
+
+### Ledger
+
+Combined income + expense movements. Filter and export to PDF.
+
+### Team (Admin)
+
+- User list with role filters and pending-approval badge
+- Add / link / edit users and roles
+- **Pending accounts** — approve team members or verify employees
+- **Employee management** — roster, attendance (any day), credential allotment
+- **Leave requests** — review queue
+
+### Messages
+
+Full team chat workspace (see [Chat layout](#chat-layout-slack-inspired) above).
+
+### Employee Portal
+
+- **Salary** — current monthly salary + published payslips by month/year
+- **Attendance** — calendar view; employees mark **today only**
+- **Leaves** — submit and track leave requests
+
+### Settings
+
+See [Settings & personalization](#settings--personalization) above.
+
+---
+
+## Business rules & formulas
 
 ### Company share
 
 ```
 Company Share = Project Income × 60%
-Owner Retained = Project Income × 40%
+Owner Retained  = Project Income × 40%
 ```
 
-### Net payable (what owner owes the company)
+### Net payable
 
 ```
 Net Payable to Company = Company Share (60%) − Owner Expenses
 ```
 
-Example: If a project owner reports **$10,000** income and **$2,000** in personal expenses:
+**Example:** $10,000 income, $2,000 owner expenses → company share **$6,000**, net payable **$4,000**.
 
-- Company share = **$6,000**
-- Net payable = **$6,000 − $2,000 = $4,000**
+### Payroll (simplified)
+
+```
+Leave deduction ≈ (base salary ÷ days in month) × leave days
+Net salary      = base − leave deduction − other deductions + bonus
+```
 
 ### Dashboard totals
 
-- **Total Income** = sum of company share from all filtered income records
-- **Total Expenses** = owner expenses + office expenses (fixed + additional)
-- **Net Balance** = total income − total expenses
+```
+Total Income   = sum of company share (filtered income)
+Total Expenses = owner expenses + office expenses (fixed + additional)
+Net Balance    = total income − total expenses
+```
 
 ---
 
-## Administrator Guide
+## Administrator guide
 
-### Adding a new team member
+### Onboarding checklist
 
-**Option A — Create account (recommended)**
+```mermaid
+flowchart TD
+  A[Create Firebase project] --> B[Enable Auth + Realtime DB]
+  B --> C[Copy .env from .env.example]
+  C --> D[Deploy database.rules.json]
+  D --> E[Optional: Supabase for chat]
+  E --> F[Optional: Cloud Functions for payslip email]
+  F --> G[First user registers → Admin]
+```
 
-1. Go to **Team → Add User**
-2. Enter name, email, temporary password, and role
-3. Share login details with the user (they should change password later if using email login)
+### Adding team members
 
-**Option B — Link existing Firebase account**
+**Create account** — Team → Add User → name, email, password, role  
 
-1. Go to **Team → Link Existing**
-2. Choose **Link by email** (looks up Firebase Auth) or **Link by UID** (from Firebase Console)
-3. Assign name and role
+**Link existing** — Team → Link Existing → by email or Firebase UID  
 
-Users who sign in with **Google** for the first time are added automatically as **Expense Viewer** until an admin changes their role.
+**Google first sign-in** — auto profile; non-first users may be pending until approved  
 
-### Exchange rate (USD → PKR)
+### Employee workflow
 
-1. **Settings → Currency**
-2. Enter how many PKR equal 1 USD
-3. Click **Save Rate**
+1. **Team → Employee management → Add employee** (roster + salary)
+2. **Allot credentials** (creates/links login with `employeeId`)
+3. Or: employee self-registers → admin **verifies** and links employee record
+4. Save **monthly payroll** in Office Expenses → publishes payslips to portal
 
-All PKR ↔ USD conversions in reports use this single rate.
+### Role permissions
 
-### Deploying database rules (required for Team list)
+**Settings → Role Access** — toggle pages/features for Project Owner, Expense Viewer, Employee.  
+Changes apply immediately to all users with that role. Admin access cannot be reduced.
 
-If the Team page is empty or shows a permission error, deploy rules:
+### Exchange rate
+
+**Settings → Currency** → set **1 USD = ___ PKR** → Save Rate
+
+### Deploy database rules
+
+Required for Team, payroll, attendance, and role permissions:
 
 ```bash
 npx -y firebase-tools@latest deploy --only database,auth
@@ -244,33 +448,27 @@ npx -y firebase-tools@latest deploy --only database,auth
 
 ## Settings
 
-See [Page Guide → Settings](#settings-1) above. Your **User ID** is shown under Account — useful when linking accounts manually in Firebase Console.
+Your **User ID** (Settings → Account) is needed when linking accounts manually in Firebase Console.
 
 ---
 
-## Developer Setup
+## Developer setup
 
 ### Prerequisites
 
 - Node.js 18+
-- Firebase project with **Authentication**, **Realtime Database**, and (optional) **Hosting**
+- Firebase project (**Authentication**, **Realtime Database**; optional **Hosting**, **Functions**)
+- Optional: Supabase project for chat
+- Optional: Android Studio for Capacitor APK
 
-### 1. Firebase project
-
-1. [Firebase Console](https://console.firebase.google.com/) → create or select project
-2. Enable **Authentication** → Email/Password and **Google**
-3. Create **Realtime Database**
-4. Register a **Web App** and copy config values
-
-### 2. Environment
+### 1. Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in `.env`:
-
-```
+```env
+# Firebase (required)
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=...
 VITE_FIREBASE_DATABASE_URL=...
@@ -278,9 +476,13 @@ VITE_FIREBASE_PROJECT_ID=...
 VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
+
+# Supabase (optional — team chat)
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
-### 3. Install & run
+### 2. Install & run
 
 ```bash
 npm install
@@ -289,7 +491,9 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173).
 
-### 4. Firebase link & rules
+Add `localhost` under Firebase Auth → **Authorized domains** for Google sign-in.
+
+### 3. Firebase rules
 
 ```bash
 npx -y firebase-tools@latest login
@@ -297,24 +501,33 @@ npx -y firebase-tools@latest use --add
 npx -y firebase-tools@latest deploy --only database,auth
 ```
 
-> For Google sign-in locally, add `localhost` under Authentication → Settings → **Authorized domains** (hostname only, no port).
-
 ### NPM scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start development server |
+| `npm run dev` | Development server |
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build |
 | `npm run lint` | Run linter |
-| `npm run cap:sync` | Build web app and sync to Capacitor |
+| `npm run cap:sync` | Build + sync Capacitor |
 | `npm run android:debug` | Build debug APK |
+| `npm run android:release` | Build release APK |
 
 ---
 
-## Deploy & Android APK
+## Deploy
 
-### Web hosting (Firebase)
+### Vercel (recommended for SPA routing)
+
+The repo includes `vercel.json` with SPA rewrites so routes like `/login` and `/settings` work on refresh.
+
+```bash
+npm run build
+# Connect repo to Vercel or:
+npx vercel --prod
+```
+
+### Firebase Hosting
 
 ```bash
 npm run build
@@ -323,49 +536,81 @@ npx -y firebase-tools@latest deploy --only hosting
 
 ### Android APK (Capacitor)
 
-Requires Android Studio and `ANDROID_HOME` configured. Firebase config from `.env` is bundled at build time.
-
 ```bash
 export ANDROID_HOME=$HOME/Library/Android/sdk
-export PATH=$PATH:$ANDROID_HOME/platform-tools
-
 npm run android:debug
+# Output: android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
-
-Install on device:
-
-```bash
-adb install android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-> Inside the native app, routes use hash URLs (`/#/income`) so navigation works in the WebView.
+Native app uses hash URLs (`/#/income`) for WebView routing.
 
 ---
 
-## Database Schema
+## Database schema
 
 ```
-users/{uid}           → email, displayName, photoURL?, role, createdAt
-incomes/{id}          → ownerId, amount, currency, companyShare, month, year, ...
-ownerExpenses/{id}    → ownerId, amount, currency, month, year, ...
-officeExpenses/{id}   → category, amount, currency, month, year, ...
-fixedExpenses/{id}    → month, year, amounts{}, currency
-settings/usdToPkr     → number (admin-only write)
+users/{uid}
+  → email, displayName, photoURL?, role, accountStatus?, employeeId?, createdAt
+
+incomes/{id}
+ownerExpenses/{id}
+officeExpenses/{id}
+fixedExpenses/{year-month}
+  → amounts{}, salaryEntries[], currency
+
+employees/{id}
+  → name, title, email, monthlySalary, currency, active, userId?
+
+employeePayslips/{employeeId}/{year-month}
+  → baseSalary, leaveDays, netAmount, paid, currency, …
+
+employeeAttendance/{employeeId}/{YYYY-MM-DD}
+  → status, note, markedAt, markedBy
+
+employeeLeaveRequests/{employeeId}/{requestId}
+  → dates, reason, status, …
+
+settings/usdToPkr          → number (admin write)
+settings/rolePermissions   → per-role permission flags (admin write)
 ```
 
-Security rules: `database.rules.json`
+Security rules: `database.rules.json`  
+Chat data lives in **Supabase** (not Firebase RTDB).
 
 ---
 
-## Tech Stack
+## Tech stack
 
-- React 19 + TypeScript + Vite
-- Firebase Authentication (Email + Google)
-- Firebase Realtime Database
-- Recharts · Capacitor (Android)
-- jsPDF (PDF export)
+| Layer | Technology |
+|-------|------------|
+| UI | React 19, TypeScript, Vite 8 |
+| Routing | React Router 7 |
+| Finance data | Firebase Auth + Realtime Database |
+| Chat | Supabase (PostgreSQL, Realtime, Presence) |
+| Charts | Recharts |
+| PDF | jsPDF + autotable |
+| Email | Firebase Cloud Functions |
+| Mobile | Capacitor 8 (Android) |
+| Hosting | Vercel / Firebase Hosting |
+| Icons | Lucide React |
+
+---
+
+## Project structure (high level)
+
+```
+src/
+├── pages/           # Route pages (Dashboard, Chat, Users, …)
+├── components/      # UI, layout, chat, admin, settings
+├── context/         # Auth, Currency, Chat, Theme, Role Permissions
+├── hooks/           # Data hooks (incomes, employees, attendance, …)
+├── lib/             # Permissions, Firebase, Supabase, PDF, salaries
+└── types/           # Shared TypeScript types
+
+database.rules.json  # Firebase RTDB security
+functions/           # Cloud Functions (payslip email)
+vercel.json          # SPA rewrites for Vercel
+```
 
 ---
 
