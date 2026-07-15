@@ -11,8 +11,11 @@ export function computeLeaveDeduction(
   year: number,
 ): number {
   if (leaveDays <= 0 || baseSalary <= 0) return 0;
-  const dailyRate = baseSalary / daysInMonth(month, year);
-  return Math.round(dailyRate * leaveDays * 100) / 100;
+  const maxDays = daysInMonth(month, year);
+  const cappedLeaveDays = Math.min(leaveDays, maxDays);
+  const dailyRate = baseSalary / maxDays;
+  const deduction = Math.round(dailyRate * cappedLeaveDays * 100) / 100;
+  return Math.min(deduction, baseSalary);
 }
 
 export function computeNetSalary(
@@ -26,12 +29,7 @@ export function computeNetSalary(
   const base = entry.baseSalary ?? 0;
   let leaveDeduction = entry.leaveDeduction ?? 0;
 
-  if (
-    entry.leaveDays > 0 &&
-    leaveDeduction === 0 &&
-    month !== undefined &&
-    year !== undefined
-  ) {
+  if (entry.leaveDays > 0 && month !== undefined && year !== undefined) {
     leaveDeduction = computeLeaveDeduction(base, entry.leaveDays, month, year);
   }
 
@@ -46,11 +44,10 @@ export function enrichSalaryEntry(
   month: number,
   year: number,
 ): MonthlySalaryEntry {
-  const baseSalary = entry.baseSalary ?? employee?.monthlySalary ?? entry.amount ?? 0;
-  const leaveDays = entry.leaveDays ?? 0;
-  const leaveDeduction =
-    entry.leaveDeduction ??
-    computeLeaveDeduction(baseSalary, leaveDays, month, year);
+  const baseSalary =
+    entry.baseSalary ?? employee?.monthlySalary ?? 0;
+  const leaveDays = Math.min(entry.leaveDays ?? 0, daysInMonth(month, year));
+  const leaveDeduction = computeLeaveDeduction(baseSalary, leaveDays, month, year);
   const bonus = entry.bonus ?? 0;
   const otherDeductions = entry.otherDeductions ?? 0;
 
@@ -92,7 +89,7 @@ export function buildSalaryEntries(
         {
           employeeId: employee.id,
           employeeName: existing?.employeeName ?? employee.name,
-          baseSalary: existing?.baseSalary ?? existing?.amount ?? employee.monthlySalary,
+          baseSalary: existing?.baseSalary ?? employee.monthlySalary,
           leaveDays: existing?.leaveDays,
           leaveDeduction: existing?.leaveDeduction,
           bonus: existing?.bonus,

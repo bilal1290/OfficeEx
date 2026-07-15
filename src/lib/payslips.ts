@@ -1,4 +1,4 @@
-import { get, set, ref } from 'firebase/database';
+import { get, remove, ref, set } from 'firebase/database';
 import { db } from './firebase';
 import { buildPayslipFromEntry } from './salaries';
 import type { CurrencyCode, EmployeePayslip, MonthlySalaryEntry } from '../types';
@@ -8,12 +8,18 @@ export async function syncEmployeePayslips(
   month: number,
   entries: MonthlySalaryEntry[],
   currency?: CurrencyCode,
+  previousEmployeeIds: string[] = [],
 ) {
   if (!db) throw new Error('Database is not configured');
   const database = db;
+  const payslipId = `${year}-${month}`;
+  const activeEmployeeIds = new Set(entries.map((entry) => entry.employeeId));
+  const staleEmployeeIds = previousEmployeeIds.filter(
+    (employeeId) => !activeEmployeeIds.has(employeeId),
+  );
 
-  await Promise.all(
-    entries.map(async (entry) => {
+  await Promise.all([
+    ...entries.map(async (entry) => {
       const payslip = buildPayslipFromEntry(entry, month, year, currency);
       const sentSnapshot = await get(
         ref(database, `employeePayslips/${entry.employeeId}/${payslip.id}/emailSentAt`),
@@ -26,7 +32,10 @@ export async function syncEmployeePayslips(
         payslip,
       );
     }),
-  );
+    ...staleEmployeeIds.map((employeeId) =>
+      remove(ref(database, `employeePayslips/${employeeId}/${payslipId}`)),
+    ),
+  ]);
 }
 
 export async function markPayslipEmailSent(

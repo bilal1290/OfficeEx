@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   Star,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -20,6 +21,7 @@ import { ChatComposer } from '../components/chat/ChatComposer';
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ChatQuickSwitcher } from '../components/chat/ChatQuickSwitcher';
 import { ConversationAvatar } from '../components/chat/ConversationAvatar';
+import { useRolePermissions } from '../context/RolePermissionsContext';
 import { getChatEligibleUsers } from '../lib/chat-users';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { toMentionOptions, extractMentionedUids } from '../lib/chat-mentions';
@@ -27,8 +29,8 @@ import { useChatNotifications } from '../context/ChatNotificationContext';
 import { GroupMembersModal } from '../components/chat/GroupMembersModal';
 import {
   EVERYONE_SLUG,
+  canLeaveConversation,
   getConversationTitle,
-  isEditableGroup,
 } from '../lib/supabase-chat';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -245,6 +247,7 @@ function NewGroupModal({
 
 function ChatPageContent() {
   const { profile } = useAuth();
+  const { config: rolePermissionsConfig } = useRolePermissions();
   const { users } = useUsers();
   const [searchParams, setSearchParams] = useSearchParams();
   const { markConversationRead, setViewingConversationId, getConversationUnreadCount, isUserOnline, getOnlineCount } =
@@ -263,6 +266,7 @@ function ChatPageContent() {
     isConfigured,
     setActiveConversationId,
     sendMessage,
+    deleteMessage,
     retryMessage,
     loadOlderMessages,
     refreshConversations,
@@ -271,6 +275,7 @@ function ChatPageContent() {
     startGroupChat,
     addGroupMembers,
     removeGroupMember,
+    leaveConversation,
   } = useChat();
 
   const [showDirectModal, setShowDirectModal] = useState(false);
@@ -290,8 +295,8 @@ function ChatPageContent() {
   const unreadAnchorRef = useRef<string | null>(null);
 
   const chatUsers = useMemo(
-    () => getChatEligibleUsers(users, profile?.uid),
-    [users, profile?.uid],
+    () => getChatEligibleUsers(users, profile?.uid, rolePermissionsConfig),
+    [users, profile?.uid, rolePermissionsConfig],
   );
 
   const mentionOptions = useMemo(() => toMentionOptions(chatUsers), [chatUsers]);
@@ -591,6 +596,31 @@ function ChatPageContent() {
     });
   };
 
+  const handleLeaveConversation = async (conversation: ChatConversation) => {
+    const title = profile?.uid
+      ? getConversationTitle(conversation, profile.uid, nameByUid)
+      : conversation.name ?? 'Chat';
+
+    if (
+      !window.confirm(
+        conversation.type === 'direct'
+          ? `Remove ${title} from your chat list?`
+          : `Leave "${title}" and remove it from your chat list?`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await leaveConversation(conversation.id);
+      if (activeConversationId === conversation.id) {
+        setMobileShowThread(false);
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not remove conversation.');
+    }
+  };
+
   if (!isConfigured) {
     return (
       <Card className="chat-empty-card">
@@ -706,6 +736,7 @@ function ChatPageContent() {
                     isUserOnline={isUserOnline}
                     onSelect={handleSelectConversation}
                     onToggleStar={handleToggleStar}
+                    onLeave={handleLeaveConversation}
                   />
                 ))}
             </section>
@@ -740,6 +771,7 @@ function ChatPageContent() {
                   isUserOnline={isUserOnline}
                   onSelect={handleSelectConversation}
                   onToggleStar={handleToggleStar}
+                  onLeave={handleLeaveConversation}
                 />
               ))}
             </section>
@@ -774,6 +806,7 @@ function ChatPageContent() {
                   isUserOnline={isUserOnline}
                   onSelect={handleSelectConversation}
                   onToggleStar={handleToggleStar}
+                  onLeave={handleLeaveConversation}
                 />
               ))}
             </section>
@@ -808,6 +841,7 @@ function ChatPageContent() {
                   isUserOnline={isUserOnline}
                   onSelect={handleSelectConversation}
                   onToggleStar={handleToggleStar}
+                  onLeave={handleLeaveConversation}
                 />
               ))}
             </section>
@@ -866,15 +900,16 @@ function ChatPageContent() {
                 {connectionStatusLabel(connectionStatus)}
               </span>
             </span>
-            {activeConversation && isEditableGroup(activeConversation) && (
+            {activeConversation && (
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
-                aria-label="Manage group members"
+                className="chat-manage-members-btn"
+                aria-label="Manage conversation members"
                 onClick={() => setShowMembersModal(true)}
               >
                 <Users size={15} />
-                <span className="chat-head-action-text">Members</span>
+                <span>Members</span>
               </Button>
             )}
             <Button
@@ -928,6 +963,15 @@ function ChatPageContent() {
               firstUnreadMessageId={firstUnreadId}
               onLoadOlder={handleLoadOlder}
               onRetry={(messageId) => void retryMessage(messageId)}
+              onDelete={async (messageId) => {
+                try {
+                  await deleteMessage(messageId);
+                } catch (err) {
+                  window.alert(
+                    err instanceof Error ? err.message : 'Could not delete message.',
+                  );
+                }
+              }}
             />
           )}
           <div ref={bottomRef} />
@@ -1019,6 +1063,7 @@ function ConversationButton({
   isUserOnline,
   onSelect,
   onToggleStar,
+  onLeave,
 }: {
   conversation: ChatConversation;
   profileUid?: string;
@@ -1031,6 +1076,7 @@ function ConversationButton({
   isUserOnline: (firebaseUid: string) => boolean;
   onSelect: (id: string) => void;
   onToggleStar: (id: string) => void;
+  onLeave?: (conversation: ChatConversation) => void;
 }) {
   const title = profileUid
     ? getConversationTitle(conversation, profileUid, nameByUid)
@@ -1041,6 +1087,7 @@ function ConversationButton({
     conversation.type === 'direct' && profileUid
       ? conversation.memberIds.find((uid) => uid !== profileUid)
       : undefined;
+  const showLeave = Boolean(onLeave) && canLeaveConversation(conversation);
 
   return (
     <div className={clsx('chat-conversation-row', isActive && 'chat-conversation-row-active')}>
@@ -1051,6 +1098,7 @@ function ConversationButton({
           'chat-conversation-item',
           isActive && 'chat-conversation-item-active',
           hasUnread && 'chat-conversation-item-unread',
+          showLeave && 'chat-conversation-item-with-actions',
         )}
         aria-label={hasUnread ? `${title}, ${unreadCount} unread` : title}
         onClick={() => onSelect(conversation.id)}
@@ -1080,6 +1128,23 @@ function ConversationButton({
           ) : null}
         </span>
       </button>
+      {showLeave && (
+        <button
+          type="button"
+          className="chat-conversation-leave"
+          aria-label={
+            conversation.type === 'direct'
+              ? `Remove ${title} from chat list`
+              : `Leave ${title}`
+          }
+          onClick={(event) => {
+            event.stopPropagation();
+            void onLeave?.(conversation);
+          }}
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
       <button
         type="button"
         className={clsx('chat-conversation-star', isStarred && 'chat-conversation-star-active')}

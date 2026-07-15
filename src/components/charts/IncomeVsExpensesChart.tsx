@@ -26,6 +26,7 @@ interface IncomeVsExpensesChartProps {
   officeExpenses: OfficeExpenseRecord[];
   fixedRecords?: FixedMonthlyExpenses[];
   year: number;
+  ownerId?: string | 'all';
   embedded?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function IncomeVsExpensesChart({
   officeExpenses,
   fixedRecords = [],
   year,
+  ownerId = 'all',
   embedded = false,
 }: IncomeVsExpensesChartProps) {
   const { displayCurrency, rates, formatDisplay } = useCurrency();
@@ -49,6 +51,7 @@ export function IncomeVsExpensesChart({
     year,
     conversion,
     fixedRecords,
+    ownerId,
   ).map((month) => ({
     name: getMonthLabel(month.month).slice(0, 3),
     income: month.income,

@@ -1,7 +1,7 @@
 import { ref, get, set, runTransaction } from 'firebase/database';
 import { db, firebaseConfig } from './firebase';
 import { sanitizeUserProfile, serializeUserForDatabase } from './users';
-import type { UserProfile, UserRole } from '../types';
+import type { AccountStatus, UserProfile, UserRole } from '../types';
 
 interface CreateAuthUserResponse {
   localId: string;
@@ -294,6 +294,7 @@ export async function ensureUserProfile(
   displayName: string,
   isFirstUser: boolean,
   photoURL?: string,
+  accountStatus?: AccountStatus,
 ): Promise<UserProfile> {
   if (!db) {
     throw new Error('Database is not configured');
@@ -306,7 +307,7 @@ export async function ensureUserProfile(
     displayName,
     photoURL,
     role: isFirstUser ? 'admin' : 'project_owner',
-    accountStatus: isFirstUser ? 'verified' : 'pending',
+    accountStatus: accountStatus ?? (isFirstUser ? 'verified' : 'pending'),
     createdAt: Date.now(),
   };
 

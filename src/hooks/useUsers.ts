@@ -9,12 +9,19 @@ import {
   rejectPendingAccount,
   verifyEmployeeAccount,
 } from '../lib/auth-api';
+import {
+  deleteUserAccount,
+  disableUserAccount,
+  enableUserAccount,
+} from '../lib/user-admin';
+import { revokeChatAccessForUser } from '../lib/supabase-chat';
+import { syncSupabaseChatFromFirebase } from '../lib/supabase-auth';
 import { db } from '../lib/firebase';
 import { normalizeUsers, serializeUserForDatabase } from '../lib/users';
 import type { UserProfile, UserRole } from '../types';
 
 export function useUsers() {
-  const { user } = useAuth();
+  const { user: currentUser, profile: currentProfile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +32,7 @@ export function useUsers() {
       return;
     }
 
-    if (!user) {
+    if (!currentUser) {
       setUsers([]);
       setLoading(false);
       setError(null);
@@ -60,7 +67,7 @@ export function useUsers() {
     );
 
     return () => unsubscribe();
-  }, [user?.uid]);
+  }, [currentUser?.uid]);
 
   const projectOwners = users.filter((user) => user.role === 'project_owner');
   const viewers = users.filter((user) => user.role === 'viewer');
@@ -84,6 +91,20 @@ export function useUsers() {
       ...data,
       updatedAt: Date.now(),
     };
+
+    if (
+      updated.role === 'employee' &&
+      updated.accountStatus === 'verified' &&
+      !updated.employeeId
+    ) {
+      throw new Error(
+        'Verified employees must be linked to an employee record. Use pending approvals or employee credential allotment.',
+      );
+    }
+
+    if (updated.role !== 'employee' && updated.employeeId) {
+      delete updated.employeeId;
+    }
 
     await set(ref(db, `users/${uid}`), serializeUserForDatabase(updated));
     return updated;
@@ -117,6 +138,33 @@ export function useUsers() {
 
   const rejectPending = async (uid: string) => rejectPendingAccount(uid);
 
+  const revokeTargetChatAccess = async (uid: string) => {
+    if (!currentUser?.uid || !currentProfile?.displayName) return;
+
+    try {
+      await syncSupabaseChatFromFirebase(currentUser.uid, currentProfile.displayName);
+      await revokeChatAccessForUser(uid);
+    } catch (err) {
+      console.warn('Could not revoke chat access for user:', err);
+    }
+  };
+
+  const disableUser = async (uid: string) => {
+    if (!currentUser?.uid) throw new Error('You must be signed in.');
+    await disableUserAccount(uid, users, currentUser.uid);
+    await revokeTargetChatAccess(uid);
+  };
+
+  const enableUser = async (uid: string) => {
+    await enableUserAccount(uid, users);
+  };
+
+  const deleteUser = async (uid: string) => {
+    if (!currentUser?.uid) throw new Error('You must be signed in.');
+    await revokeTargetChatAccess(uid);
+    await deleteUserAccount(uid, users, currentUser.uid);
+  };
+
   return {
     users,
     projectOwners,
@@ -132,5 +180,8 @@ export function useUsers() {
     verifyEmployee,
     approveTeam,
     rejectPending,
+    disableUser,
+    enableUser,
+    deleteUser,
   };
 }

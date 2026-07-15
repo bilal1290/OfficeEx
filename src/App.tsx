@@ -15,6 +15,7 @@ import {
   OfficeExpensesRoute,
   OwnerExpensesRoute,
   ProtectedRoute,
+  TransactionsRoute,
 } from './components/auth/ProtectedRoute';
 import { SetupRequired } from './components/SetupRequired';
 import { LoginPage } from './pages/LoginPage';
@@ -63,7 +64,9 @@ export default function App() {
                   <Route element={<OwnerExpensesRoute />}>
                     <Route path="expenses" element={<ExpensesPage />} />
                   </Route>
-                  <Route path="transactions" element={<TransactionsPage />} />
+                  <Route element={<TransactionsRoute />}>
+                    <Route path="transactions" element={<TransactionsPage />} />
+                  </Route>
                   <Route path="settings" element={<SettingsPage />} />
                   <Route element={<ChatRoute />}>
                     <Route path="chat" element={<ChatPage />} />

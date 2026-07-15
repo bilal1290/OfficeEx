@@ -1,9 +1,9 @@
 import { memo, useMemo, useState } from 'react';
-import { AlertCircle, Check, Copy, RotateCcw } from 'lucide-react';
+import { AlertCircle, Check, Copy, RotateCcw, Trash2 } from 'lucide-react';
 import { UserAvatar } from '../ui/UserAvatar';
 import { ChatMessageBody } from './ChatMessageBody';
 import { formatChatDayLabel, formatChatTime } from '../../lib/datetime';
-import { clsx } from '../../lib/utils';
+import { clsx, copyTextToClipboard } from '../../lib/utils';
 import type { AvatarUser } from '../ui/UserAvatar';
 import type { ChatMessage } from '../../types';
 
@@ -17,6 +17,7 @@ interface ChatMessageItemProps {
   compact: boolean;
   showUnreadDivider?: boolean;
   onRetry?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
 }
 
 export const ChatMessageItem = memo(function ChatMessageItem({
@@ -27,20 +28,31 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   compact,
   showUnreadDivider,
   onRetry,
+  onDelete,
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const isPending = message.status === 'pending';
   const isFailed = message.status === 'failed';
   const fullTimestamp = new Date(message.createdAt).toLocaleString();
+  const canDelete = Boolean(onDelete) && !isPending && !message.id.startsWith('pending-');
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(message.text);
+    setCopyError(false);
+    const ok = await copyTextToClipboard(message.text);
+    if (ok) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Ignore clipboard failures.
+      return;
     }
+    setCopyError(true);
+    window.setTimeout(() => setCopyError(false), 2000);
+  };
+
+  const handleDelete = () => {
+    if (!onDelete || !canDelete) return;
+    if (!window.confirm('Delete this message for everyone in this conversation?')) return;
+    void onDelete(message.id);
   };
 
   return (
@@ -66,27 +78,59 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           <span className="chat-message-avatar-spacer" aria-hidden />
         )}
         <div className="chat-message-body">
-          <div className="chat-message-actions" aria-label="Message actions">
-            <button
-              type="button"
-              className="chat-message-action-btn"
-              aria-label={copied ? 'Copied' : 'Copy message'}
-              onClick={() => void handleCopy()}
-            >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-          </div>
           {!compact && (
             <div className="chat-message-meta">
               <strong>{isMine ? 'You' : message.senderName}</strong>
               <span className="chat-message-time">{formatChatTime(message.createdAt)}</span>
+              <div className="chat-message-toolbar">
+                <button
+                  type="button"
+                  className="chat-message-toolbar-btn chat-message-toolbar-btn-icon"
+                  aria-label={copied ? 'Copied' : copyError ? 'Copy failed' : 'Copy message'}
+                  onClick={() => void handleCopy()}
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="chat-message-toolbar-btn chat-message-toolbar-btn-icon chat-message-toolbar-btn-danger"
+                    aria-label="Delete message"
+                    onClick={handleDelete}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {compact && (
-            <span className="chat-message-time-compact">
-              {formatChatTime(message.createdAt)}
-              {isPending && ' · Sending…'}
-            </span>
+            <div className="chat-message-meta chat-message-meta-compact">
+              <span className="chat-message-time-compact">
+                {formatChatTime(message.createdAt)}
+                {isPending && ' · Sending…'}
+              </span>
+              <div className="chat-message-toolbar">
+                <button
+                  type="button"
+                  className="chat-message-toolbar-btn chat-message-toolbar-btn-icon"
+                  aria-label={copied ? 'Copied' : copyError ? 'Copy failed' : 'Copy message'}
+                  onClick={() => void handleCopy()}
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="chat-message-toolbar-btn chat-message-toolbar-btn-icon chat-message-toolbar-btn-danger"
+                    aria-label="Delete message"
+                    onClick={handleDelete}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
           )}
           <ChatMessageBody text={message.text} mentionNames={mentionNames} />
           {isFailed && (
@@ -164,6 +208,7 @@ export function ChatMessageList({
   firstUnreadMessageId,
   onLoadOlder,
   onRetry,
+  onDelete,
 }: {
   messages: ChatMessage[];
   myUid?: string;
@@ -175,6 +220,7 @@ export function ChatMessageList({
   firstUnreadMessageId?: string | null;
   onLoadOlder?: () => void;
   onRetry?: (messageId: string) => void;
+  onDelete?: (messageId: string) => void;
 }) {
   const groups = useMemo(() => groupMessagesByDay(messages), [messages]);
 
@@ -225,6 +271,7 @@ export function ChatMessageList({
                 compact={compact}
                 showUnreadDivider={firstUnreadMessageId === message.id}
                 onRetry={onRetry}
+                onDelete={onDelete}
               />
             );
           })}

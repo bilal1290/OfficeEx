@@ -13,8 +13,10 @@ import {
   signOut,
   type User,
 } from 'firebase/auth';
-import { get, ref, set } from 'firebase/database';
+import { get, onValue, ref, set } from 'firebase/database';
 import { ensureUserProfile, createEmployeeProfile } from '../lib/auth-api';
+import { resolveBootstrapRole } from '../lib/bootstrap-admin';
+import { isUserRevoked } from '../lib/user-admin';
 import { completeGoogleRedirectSignIn, signInWithGoogle as firebaseGoogleSignIn } from '../lib/google-auth';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import { getPermissions, isVerifiedEmployee, type Permissions } from '../lib/permissions';
@@ -72,6 +74,11 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
   const photoURL = resolveAuthPhotoUrl(firebaseUser.photoURL);
   const snapshot = await get(ref(db, `users/${firebaseUser.uid}`));
 
+  const revoked = await isUserRevoked(firebaseUser.uid);
+  if (revoked) {
+    throw new Error('This account was removed by an administrator.');
+  }
+
   if (snapshot.exists()) {
     const existing = sanitizeUserProfile(
       firebaseUser.uid,
@@ -99,19 +106,20 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
     return existing;
   }
 
-  const usersSnapshot = await get(ref(db, 'users'));
-  const isFirstUser = !usersSnapshot.exists();
   const displayName =
     firebaseUser.displayName?.trim() ||
     firebaseUser.email?.split('@')[0] ||
     'Team member';
 
+  const bootstrap = await resolveBootstrapRole(firebaseUser.uid);
+
   const created = await ensureUserProfile(
     firebaseUser.uid,
     firebaseUser.email ?? '',
     displayName,
-    isFirstUser,
+    bootstrap.role === 'admin',
     photoURL,
+    bootstrap.accountStatus,
   );
 
   await notifyIfNewPendingProfile(created, 'team', true);
@@ -119,10 +127,12 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { config: rolePermissionsConfig } = useRolePermissions();
+  const { config: rolePermissionsConfig, loading: rolePermissionsLoading } =
+    useRolePermissions();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(isFirebaseConfigured);
+  const [authLoading, setAuthLoading] = useState(isFirebaseConfigured);
+  const loading = authLoading || rolePermissionsLoading;
 
   const role = profile?.role;
   const permissions = useMemo(
@@ -144,19 +154,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth || !db) {
-      setLoading(false);
+      setAuthLoading(false);
       return;
     }
 
-    let settled = false;
-    const finishLoading = () => {
-      if (!settled) {
-        settled = true;
-        setLoading(false);
+    let profileUnsubscribe: (() => void) | undefined;
+    let profileReady = false;
+
+    const markProfileReady = () => {
+      if (!profileReady) {
+        profileReady = true;
+        setAuthLoading(false);
       }
     };
-
-    const timeoutId = window.setTimeout(finishLoading, 8000);
 
     void completeGoogleRedirectSignIn(auth).catch((error) => {
       console.error('Google redirect sign-in error:', error);
@@ -165,42 +175,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(
       auth,
       async (firebaseUser) => {
+        profileUnsubscribe?.();
+        profileUnsubscribe = undefined;
+        profileReady = false;
         setUser(firebaseUser);
-        if (firebaseUser) {
-          try {
-            const nextProfile = await loadOrCreateProfile(firebaseUser);
-            setProfile(nextProfile);
-            if (nextProfile && isAccountApproved(nextProfile)) {
-              try {
-                await syncSupabaseSession(firebaseUser, nextProfile.displayName);
-              } catch (error) {
-                console.error('Supabase chat session sync failed:', error);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to load user profile:', error);
-            setProfile(null);
-          }
-        } else {
+
+        if (!firebaseUser) {
           setProfile(null);
+          markProfileReady();
           try {
             await signOutSupabase();
           } catch (error) {
             console.warn('Supabase sign-out failed:', error);
           }
+          return;
         }
-        finishLoading();
+
+        setAuthLoading(true);
+
+        try {
+          const nextProfile = await loadOrCreateProfile(firebaseUser);
+          setProfile(nextProfile);
+          if (nextProfile && isAccountApproved(nextProfile)) {
+            try {
+              await syncSupabaseSession(firebaseUser, nextProfile.displayName);
+            } catch (error) {
+              console.error('Supabase chat session sync failed:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load user profile:', error);
+          setProfile(null);
+        } finally {
+          markProfileReady();
+        }
+
+        if (!firebaseUser || !db) {
+          return;
+        }
+
+        const profileRef = ref(db, `users/${firebaseUser.uid}`);
+        profileUnsubscribe = onValue(profileRef, (snapshot) => {
+          if (!snapshot.exists()) return;
+
+          const liveProfile = sanitizeUserProfile(
+            firebaseUser.uid,
+            snapshot.val() as UserProfile,
+          );
+          if (!liveProfile) return;
+
+          setProfile((current) => {
+            const becameApproved =
+              current &&
+              !isAccountApproved(current) &&
+              isAccountApproved(liveProfile);
+
+            if (becameApproved) {
+              void syncSupabaseSession(firebaseUser, liveProfile.displayName).catch(
+                (error) => {
+                  console.error('Supabase chat session sync failed:', error);
+                },
+              );
+            }
+
+            return liveProfile;
+          });
+        });
       },
       (error) => {
         console.error('Auth state error:', error);
         setProfile(null);
-        finishLoading();
+        markProfileReady();
       },
     );
 
     return () => {
-      window.clearTimeout(timeoutId);
       unsubscribe();
+      profileUnsubscribe?.();
     };
   }, []);
 
@@ -240,32 +291,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const usersSnapshot = await get(ref(db, 'users'));
-    const isFirstUser = !usersSnapshot.exists();
-
-    if (isFirstUser) {
-      const userProfile: UserProfile = {
-        uid: credential.user.uid,
-        email,
-        displayName,
-        role: 'admin',
-        accountStatus: 'verified',
-        createdAt: Date.now(),
-      };
-      await set(
-        ref(db, `users/${credential.user.uid}`),
-        serializeUserForDatabase(userProfile),
-      );
-      setProfile(sanitizeUserProfile(credential.user.uid, userProfile));
-      return;
-    }
+    const bootstrap = await resolveBootstrapRole(credential.user.uid);
 
     const userProfile: UserProfile = {
       uid: credential.user.uid,
       email,
       displayName,
-      role: 'project_owner',
-      accountStatus: 'pending',
+      role: bootstrap.role,
+      accountStatus: bootstrap.accountStatus,
       createdAt: Date.now(),
     };
 
@@ -274,7 +307,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       serializeUserForDatabase(userProfile),
     );
     setProfile(sanitizeUserProfile(credential.user.uid, userProfile));
-    await notifyIfNewPendingProfile(userProfile, 'team', true);
+
+    if (bootstrap.accountStatus === 'pending') {
+      await notifyIfNewPendingProfile(userProfile, 'team', true);
+    }
+    return;
   };
 
   const logout = async () => {

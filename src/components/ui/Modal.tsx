@@ -35,7 +35,10 @@ interface ConfirmModalProps {
   onConfirm: () => void;
   title: string;
   message: string;
+  error?: string;
   loading?: boolean;
+  confirmLabel?: string;
+  loadingLabel?: string;
 }
 
 export function ConfirmModal({
@@ -44,7 +47,10 @@ export function ConfirmModal({
   onConfirm,
   title,
   message,
+  error,
   loading,
+  confirmLabel = 'Delete',
+  loadingLabel = 'Working...',
 }: ConfirmModalProps) {
   return (
     <Modal
@@ -57,12 +63,13 @@ export function ConfirmModal({
             Cancel
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={loading}>
-            {loading ? 'Deleting...' : 'Delete'}
+            {loading ? loadingLabel : confirmLabel}
           </Button>
         </>
       }
     >
       <p>{message}</p>
+      {error && <p className="auth-error">{error}</p>}
     </Modal>
   );
 }

@@ -16,12 +16,14 @@ import {
   computeFinancialSummary,
   computeOwnerPayables,
 } from '../lib/calculations';
+import { getEffectiveOwnerFilter } from '../lib/routing';
 import { Badge } from '../components/ui/Badge';
 import { getMonthLabel } from '../lib/utils';
 
 export function DashboardPage() {
-  const { permissions } = useAuth();
+  const { permissions, profile, isAdmin } = useAuth();
   const { filter } = useFilter();
+  const effectiveFilter = getEffectiveOwnerFilter(filter, profile?.uid, isAdmin);
   const { displayCurrency, rates, format } = useCurrency();
   const conversion = { displayCurrency, rates };
   const { incomes, loading: incomesLoading, error: incomesError } = useIncomes();
@@ -51,7 +53,7 @@ export function DashboardPage() {
     incomes,
     ownerExpenses,
     officeExpenses,
-    filter,
+    effectiveFilter,
     conversion,
     fixedRecords,
   );
@@ -60,7 +62,7 @@ export function DashboardPage() {
     incomes,
     ownerExpenses,
     users,
-    filter,
+    effectiveFilter,
     conversion,
   );
 
@@ -69,7 +71,7 @@ export function DashboardPage() {
     ownerExpenses,
     officeExpenses,
     users,
-    filter,
+    effectiveFilter,
     fixedRecords,
   ).slice(0, 5);
 
@@ -84,14 +86,15 @@ export function DashboardPage() {
   return (
     <div className="overview-page">
       {dataError && <DataErrorBanner message={dataError} />}
-      <FilterBar />
+      <FilterBar showOwnerFilter={isAdmin} />
 
       <DashboardSummary
         totalIncome={summary.totalIncome}
         totalExpenses={summary.totalExpenses}
         netBalance={summary.netBalance}
         monthlyProfitLoss={summary.monthlyProfitLoss}
-        filter={filter}
+        filter={effectiveFilter}
+        ownerId={effectiveFilter.ownerId}
         incomes={incomes}
         ownerExpenses={ownerExpenses}
         officeExpenses={officeExpenses}

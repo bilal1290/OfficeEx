@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { PendingVerificationPage } from '../../pages/PendingVerificationPage';
+import { getDefaultRoute } from '../../lib/routing';
 
 function RouteLoader() {
   return (
@@ -10,8 +11,6 @@ function RouteLoader() {
     </div>
   );
 }
-
-const VERIFIED_EMPLOYEE_PATHS = ['/my-salary', '/chat', '/settings', '/pending'];
 
 export function ProtectedRoute() {
   const { user, profile, loading } = useAuth();
@@ -53,16 +52,19 @@ export function ProtectedRoute() {
     return <PendingVerificationPage />;
   }
 
-  if (profile.role === 'employee') {
-    const allowed = VERIFIED_EMPLOYEE_PATHS.some(
-      (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
-    );
-    if (!allowed) {
-      return <Navigate to="/my-salary" replace />;
-    }
-  }
-
   return <Outlet />;
+}
+
+function redirectForPermissions(
+  permissions: ReturnType<typeof useAuth>['permissions'],
+  isVerifiedEmployee: boolean,
+) {
+  return (
+    <Navigate
+      to={getDefaultRoute(permissions, { isVerifiedEmployee, skipDashboard: true })}
+      replace
+    />
+  );
 }
 
 export function AdminRoute() {
@@ -71,43 +73,55 @@ export function AdminRoute() {
   if (loading) return <RouteLoader />;
 
   if (!permissions.canManageUsers) {
-    return <Navigate to="/" replace />;
+    return redirectForPermissions(permissions, false);
   }
 
   return <Outlet />;
 }
 
 export function IncomeRoute() {
-  const { permissions, loading } = useAuth();
+  const { permissions, loading, isVerifiedEmployee } = useAuth();
 
   if (loading) return <RouteLoader />;
 
   if (!permissions.canViewIncome) {
-    return <Navigate to="/office-expenses" replace />;
+    return redirectForPermissions(permissions, isVerifiedEmployee);
   }
 
   return <Outlet />;
 }
 
 export function OfficeExpensesRoute() {
-  const { permissions, loading } = useAuth();
+  const { permissions, loading, isVerifiedEmployee } = useAuth();
 
   if (loading) return <RouteLoader />;
 
   if (!permissions.canAccessOfficeExpenses) {
-    return <Navigate to="/" replace />;
+    return redirectForPermissions(permissions, isVerifiedEmployee);
   }
 
   return <Outlet />;
 }
 
 export function OwnerExpensesRoute() {
-  const { permissions, loading } = useAuth();
+  const { permissions, loading, isVerifiedEmployee } = useAuth();
 
   if (loading) return <RouteLoader />;
 
   if (!permissions.canManageOwnerExpenses) {
-    return <Navigate to="/" replace />;
+    return redirectForPermissions(permissions, isVerifiedEmployee);
+  }
+
+  return <Outlet />;
+}
+
+export function TransactionsRoute() {
+  const { permissions, loading, isVerifiedEmployee } = useAuth();
+
+  if (loading) return <RouteLoader />;
+
+  if (!permissions.canViewExpenseTransactions) {
+    return redirectForPermissions(permissions, isVerifiedEmployee);
   }
 
   return <Outlet />;
@@ -126,31 +140,41 @@ export function HomeRoute() {
     return <Outlet />;
   }
 
-  return <Navigate to="/office-expenses" replace />;
+  return (
+    <Navigate
+      to={getDefaultRoute(permissions, { skipDashboard: true })}
+      replace
+    />
+  );
 }
 
 export function EmployeePortalRoute() {
-  const { permissions, loading } = useAuth();
+  const { permissions, loading, profile } = useAuth();
 
   if (loading) return <RouteLoader />;
 
   if (!permissions.canAccessEmployeePortal) {
-    return <Navigate to="/pending" replace />;
+    if (profile?.accountStatus === 'pending' || profile?.accountStatus === 'rejected') {
+      return <Navigate to="/pending" replace />;
+    }
+    return <Navigate to="/settings" replace />;
   }
 
   return <Outlet />;
 }
 
 export function ChatRoute() {
-  const { permissions, loading, profile } = useAuth();
+  const { permissions, loading, isVerifiedEmployee } = useAuth();
 
   if (loading) return <RouteLoader />;
 
   if (!permissions.canAccessChat) {
-    if (profile?.role === 'employee') {
-      return <Navigate to="/my-salary" replace />;
-    }
-    return <Navigate to="/" replace />;
+    return (
+      <Navigate
+        to={getDefaultRoute(permissions, { isVerifiedEmployee, skipDashboard: true })}
+        replace
+      />
+    );
   }
 
   return <Outlet />;

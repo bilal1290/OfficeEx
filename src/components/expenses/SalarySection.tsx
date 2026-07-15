@@ -17,6 +17,7 @@ import {
   computeLeaveDeduction,
   computeNetSalary,
   countPaidSalaries,
+  daysInMonth,
   sumAllSalaries,
   sumPaidSalaries,
 } from '../../lib/salaries';
@@ -40,13 +41,17 @@ export function SalarySection() {
   const { users } = useUsers();
   const { records, loading: fixedLoading, saveSalaryEntries } = useFixedExpenses();
 
-  const month = filter.month === 'all' ? new Date().getMonth() + 1 : filter.month;
+  const month = filter.month === 'all' ? null : filter.month;
   const year = filter.year;
-  const periodLabel = `${MONTHS.find((item) => item.value === month)?.label} ${year}`;
+  const periodLabel =
+    month === null
+      ? `Select a month for ${year} payroll`
+      : `${MONTHS.find((item) => item.value === month)?.label} ${year}`;
 
-  const fixedRecord = records.find(
-    (record) => record.id === getFixedExpenseId(year, month),
-  );
+  const fixedRecord =
+    month === null
+      ? undefined
+      : records.find((record) => record.id === getFixedExpenseId(year, month));
 
   const [entries, setEntries] = useState<MonthlySalaryEntry[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>(displayCurrency);
@@ -65,6 +70,11 @@ export function SalarySection() {
   const [emailStatus, setEmailStatus] = useState('');
 
   useEffect(() => {
+    if (month === null) {
+      setEntries([]);
+      setSaved(false);
+      return;
+    }
     setEntries(buildSalaryEntries(activeEmployees, fixedRecord?.salaryEntries, month, year));
     setCurrency(fixedRecord?.currency ?? displayCurrency);
     setSaved(false);
@@ -89,32 +99,30 @@ export function SalarySection() {
   };
 
   const updateAmount = (employeeId: string, value: string) => {
-    if (!permissions.canUpdateFixedExpenses) return;
+    if (!permissions.canUpdateFixedExpenses || month === null) return;
     const amount = value === '' ? 0 : parseFloat(value);
     setEntries((current) =>
-      current.map((entry) =>
-        entry.employeeId === employeeId
-          ? {
-              ...entry,
-              baseSalary: Number.isFinite(amount) ? amount : 0,
-              amount: computeNetSalary(
-                {
-                  ...entry,
-                  baseSalary: Number.isFinite(amount) ? amount : 0,
-                },
-                month,
-                year,
-              ),
-            }
-          : entry,
-      ),
+      current.map((entry) => {
+        if (entry.employeeId !== employeeId) return entry;
+        const baseSalary = Number.isFinite(amount) ? amount : 0;
+        const leaveDeduction =
+          entry.leaveDays > 0
+            ? computeLeaveDeduction(baseSalary, entry.leaveDays, month, year)
+            : 0;
+        const next = { ...entry, baseSalary, leaveDeduction };
+        return {
+          ...next,
+          amount: computeNetSalary(next, month, year),
+        };
+      }),
     );
     setSaved(false);
   };
 
   const updateLeaveDays = (employeeId: string, value: string) => {
-    if (!permissions.canUpdateFixedExpenses) return;
-    const leaveDays = value === '' ? 0 : Math.max(0, parseInt(value, 10) || 0);
+    if (!permissions.canUpdateFixedExpenses || month === null) return;
+    const maxDays = daysInMonth(month, year);
+    const leaveDays = value === '' ? 0 : Math.min(maxDays, Math.max(0, parseInt(value, 10) || 0));
     setEntries((current) =>
       current.map((entry) => {
         if (entry.employeeId !== employeeId) return entry;
@@ -135,7 +143,7 @@ export function SalarySection() {
   };
 
   const updateBonus = (employeeId: string, value: string) => {
-    if (!permissions.canUpdateFixedExpenses) return;
+    if (!permissions.canUpdateFixedExpenses || month === null) return;
     const bonus = value === '' ? 0 : parseFloat(value);
     setEntries((current) =>
       current.map((entry) => {
@@ -154,7 +162,7 @@ export function SalarySection() {
   };
 
   const updateOtherDeductions = (employeeId: string, value: string) => {
-    if (!permissions.canUpdateFixedExpenses) return;
+    if (!permissions.canUpdateFixedExpenses || month === null) return;
     const otherDeductions = value === '' ? 0 : parseFloat(value);
     setEntries((current) =>
       current.map((entry) => {
@@ -183,7 +191,7 @@ export function SalarySection() {
   };
 
   const handleSave = async () => {
-    if (!profile || !permissions.canUpdateFixedExpenses) return;
+    if (!profile || !permissions.canUpdateFixedExpenses || month === null) return;
 
     setSubmitting(true);
     setEmailStatus('');
@@ -292,7 +300,7 @@ export function SalarySection() {
                 </Button>
               )}
               {permissions.canUpdateFixedExpenses && (
-                <Button onClick={handleSave} disabled={submitting}>
+                <Button onClick={handleSave} disabled={submitting || month === null}>
                   <Save size={16} />
                   {submitting ? 'Saving...' : 'Save Salaries'}
                 </Button>
@@ -302,6 +310,13 @@ export function SalarySection() {
         />
 
         {employeesError && <DataErrorBanner message={employeesError} />}
+
+        {month === null && (
+          <p className="salary-section-hint salary-section-month-warning">
+            Choose a specific month in the filter bar to edit and save payroll for that
+            period.
+          </p>
+        )}
 
         <p className="salary-section-hint">
           Set base salary, leave days, bonuses, and deductions. Net amount is calculated

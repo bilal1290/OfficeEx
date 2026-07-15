@@ -20,6 +20,7 @@ import {
   bootstrapChatSession,
   createGroupChat,
   createOptimisticMessageId,
+  deleteChatMessage,
   fetchChatMessages,
   fetchChatMessagesBefore,
   fetchChatMessagesSince,
@@ -29,6 +30,7 @@ import {
   isSupabaseChatReady,
   latestMessageByConversation,
   mergeMessages,
+  leaveConversation,
   removeGroupMember,
   sendChatMessage,
   subscribeToChatConnectionStatus,
@@ -82,6 +84,7 @@ interface ChatContextValue {
   isConfigured: boolean;
   setActiveConversationId: (id: string) => void;
   sendMessage: (text: string, mentionedUids?: string[]) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
   loadOlderMessages: () => Promise<void>;
   refreshConversations: () => Promise<void>;
@@ -90,6 +93,7 @@ interface ChatContextValue {
   startGroupChat: (name: string, memberFirebaseUids: string[]) => Promise<void>;
   addGroupMembers: (conversationId: string, memberFirebaseUids: string[]) => Promise<void>;
   removeGroupMember: (conversationId: string, memberFirebaseUid: string) => Promise<void>;
+  leaveConversation: (conversationId: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -146,6 +150,16 @@ export function ChatProvider({
     messageCacheRef.current[conversationId] = nextMessages;
     setMessageCache({ ...messageCacheRef.current });
   }, []);
+
+  const removeFromCache = useCallback(
+    (conversationId: string, messageId: string) => {
+      const current = messageCacheRef.current[conversationId] ?? [];
+      const next = current.filter((message) => message.id !== messageId);
+      if (next.length === current.length) return;
+      patchCache(conversationId, next);
+    },
+    [patchCache],
+  );
 
   const appendToCache = useCallback(
     (conversationId: string, message: ChatMessage) => {
@@ -318,6 +332,42 @@ export function ChatProvider({
     [senderId, senderName, activeConversationId, appendToCache, patchCache],
   );
 
+  const deleteMessageHandler = useCallback(
+    async (messageId: string) => {
+      if (!senderId || !senderName || !activeConversationId) {
+        throw new Error('Chat is not ready.');
+      }
+
+      const conversationId = activeConversationId;
+      removeFromCache(conversationId, messageId);
+      setError(null);
+
+      try {
+        await deleteChatMessage(conversationId, messageId, senderId, senderName);
+      } catch (err) {
+        await loadActiveConversationMessages(conversationId, true);
+        setError(err instanceof Error ? err.message : 'Could not delete message.');
+        throw err;
+      }
+    },
+    [senderId, senderName, activeConversationId, removeFromCache, loadActiveConversationMessages],
+  );
+
+  const leaveConversationHandler = useCallback(
+    async (conversationId: string) => {
+      if (!senderId || !senderName) {
+        throw new Error('Chat is not ready.');
+      }
+
+      await leaveConversation(conversationId, senderId, senderName);
+      await refreshConversations();
+      setActiveConversationId((current) =>
+        current === conversationId ? EVERYONE_CONVERSATION_ID : current,
+      );
+    },
+    [senderId, senderName, refreshConversations],
+  );
+
   const retryMessage = useCallback(
     async (messageId: string) => {
       if (!senderId || !senderName || !activeConversationId) return;
@@ -408,7 +458,12 @@ export function ChatProvider({
       if (!senderId) {
         throw new Error('Chat is not ready.');
       }
-      const updated = await removeGroupMember(conversationId, senderId, memberFirebaseUid);
+      const updated = await removeGroupMember(
+        conversationId,
+        senderId,
+        memberFirebaseUid,
+        senderName ?? 'User',
+      );
       const leftGroup = memberFirebaseUid === senderId;
 
       if (leftGroup || !updated) {
@@ -423,7 +478,7 @@ export function ChatProvider({
         ),
       );
     },
-    [senderId, refreshConversations],
+    [senderId, senderName, refreshConversations],
   );
 
   useEffect(() => {
@@ -503,8 +558,11 @@ export function ChatProvider({
       (conversationId, message) => {
         appendToCache(conversationId, { ...message, status: 'sent' });
       },
+      (conversationId, messageId) => {
+        removeFromCache(conversationId, messageId);
+      },
     );
-  }, [isConfigured, conversations, appendToCache]);
+  }, [isConfigured, conversations, appendToCache, removeFromCache]);
 
   useEffect(() => {
     return () => {
@@ -544,6 +602,7 @@ export function ChatProvider({
       isConfigured,
       setActiveConversationId,
       sendMessage: sendMessageHandler,
+      deleteMessage: deleteMessageHandler,
       retryMessage,
       loadOlderMessages,
       refreshConversations,
@@ -552,6 +611,7 @@ export function ChatProvider({
       startGroupChat,
       addGroupMembers: addGroupMembersHandler,
       removeGroupMember: removeGroupMemberHandler,
+      leaveConversation: leaveConversationHandler,
     }),
     [
       conversations,
@@ -566,6 +626,7 @@ export function ChatProvider({
       error,
       isConfigured,
       sendMessageHandler,
+      deleteMessageHandler,
       retryMessage,
       loadOlderMessages,
       refreshConversations,
@@ -574,6 +635,7 @@ export function ChatProvider({
       startGroupChat,
       addGroupMembersHandler,
       removeGroupMemberHandler,
+      leaveConversationHandler,
     ],
   );
 

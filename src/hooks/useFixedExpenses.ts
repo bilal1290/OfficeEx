@@ -118,7 +118,16 @@ export function useFixedExpenses(enabled = true) {
     };
 
     await set(ref(db, `fixedExpenses/${record.id}`), record);
-    await syncEmployeePayslips(year, month, normalizedEntries, record.currency);
+    const previousEmployeeIds = (existing.salaryEntries ?? []).map(
+      (entry) => entry.employeeId,
+    );
+    await syncEmployeePayslips(
+      year,
+      month,
+      normalizedEntries,
+      record.currency,
+      previousEmployeeIds,
+    );
     return record;
   };
 

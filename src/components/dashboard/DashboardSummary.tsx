@@ -17,6 +17,7 @@ interface DashboardSummaryProps {
   netBalance: number;
   monthlyProfitLoss: number;
   filter: FilterState;
+  ownerId?: string | 'all';
   incomes: IncomeRecord[];
   ownerExpenses: OwnerExpenseRecord[];
   officeExpenses: OfficeExpenseRecord[];
@@ -29,6 +30,7 @@ export function DashboardSummary({
   netBalance,
   monthlyProfitLoss,
   filter,
+  ownerId = 'all',
   incomes,
   ownerExpenses,
   officeExpenses,
@@ -103,6 +105,7 @@ export function DashboardSummary({
           officeExpenses={officeExpenses}
           fixedRecords={fixedRecords}
           year={filter.year}
+          ownerId={ownerId}
         />
         <OverviewSpendPanel
           ownerExpenses={ownerExpenses}

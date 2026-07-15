@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { AuthFooterLink, AuthShell } from '../components/auth/AuthShell';
 import { AuthDivider, GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
+import { getDefaultRoute } from '../lib/routing';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { clsx } from '../lib/utils';
@@ -10,7 +11,7 @@ import { clsx } from '../lib/utils';
 type AccountKind = 'team' | 'employee';
 
 export function RegisterPage() {
-  const { register, user, profile, loading } = useAuth();
+  const { register, user, profile, loading, isVerifiedEmployee, permissions } = useAuth();
   const [accountKind, setAccountKind] = useState<AccountKind>('team');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -34,9 +35,9 @@ export function RegisterPage() {
       return <Navigate to="/pending" replace />;
     }
     if (profile.role === 'employee') {
-      return <Navigate to="/pending" replace />;
+      return <Navigate to={isVerifiedEmployee ? '/my-salary' : '/pending'} replace />;
     }
-    return <Navigate to="/" replace />;
+    return <Navigate to={getDefaultRoute(permissions)} replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent) => {

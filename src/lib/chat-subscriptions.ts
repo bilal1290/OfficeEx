@@ -5,6 +5,7 @@ export function syncConversationMessageSubscriptions(
   unsubscribers: Map<string, () => void>,
   conversationIds: Iterable<string>,
   onMessage: (conversationId: string, message: ChatMessage) => void,
+  onDelete?: (conversationId: string, messageId: string) => void,
 ): void {
   const activeIds = new Set(conversationIds);
 
@@ -19,9 +20,17 @@ export function syncConversationMessageSubscriptions(
 
     unsubscribers.set(
       conversationId,
-      subscribeToConversationMessages(conversationId, (message) => {
-        onMessage(conversationId, message);
-      }),
+      subscribeToConversationMessages(
+        conversationId,
+        (message) => {
+          onMessage(conversationId, message);
+        },
+        onDelete
+          ? (messageId) => {
+              onDelete(conversationId, messageId);
+            }
+          : undefined,
+      ),
     );
   }
 }

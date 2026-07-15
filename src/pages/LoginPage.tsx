@@ -3,11 +3,12 @@ import { Navigate } from 'react-router-dom';
 import { AuthFooterLink, AuthShell } from '../components/auth/AuthShell';
 import { AuthDivider, GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 import { useAuth } from '../context/AuthContext';
+import { getDefaultRoute } from '../lib/routing';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
 export function LoginPage() {
-  const { login, user, profile, loading, isVerifiedEmployee } = useAuth();
+  const { login, user, profile, loading, isVerifiedEmployee, permissions } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,7 +31,7 @@ export function LoginPage() {
     if (profile.role === 'employee') {
       return <Navigate to={isVerifiedEmployee ? '/my-salary' : '/pending'} replace />;
     }
-    return <Navigate to="/" replace />;
+    return <Navigate to={getDefaultRoute(permissions)} replace />;
   }
 
   const handleSubmit = async (event: React.FormEvent) => {

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Link2, Pencil, UserPlus } from 'lucide-react';
+import { Ban, Link2, Pencil, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUsers } from '../hooks/useUsers';
 import { USER_ROLES } from '../lib/constants';
 import { getRoleLabel, getAccountStatusLabel } from '../lib/permissions';
+import { isAccountRejected } from '../lib/account-status';
 import { PendingAccountsPanel } from '../components/dashboard/PendingAccountsPanel';
 import { EmployeeManagementPanel } from '../components/admin/EmployeeManagementPanel';
 import { LeaveRequestsPanel } from '../components/admin/LeaveRequestsPanel';
@@ -12,7 +13,7 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { DataErrorBanner } from '../components/ui/DataErrorBanner';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
-import { Modal } from '../components/ui/Modal';
+import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { Badge } from '../components/ui/Badge';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { formatDateTime } from '../lib/datetime';
@@ -38,15 +39,30 @@ const FILTER_OPTIONS: Array<{ value: RoleFilter; label: string }> = [
 ];
 
 export function UsersPage() {
-  const { profile } = useAuth();
-  const { users, loading, error, updateUser, addUser, linkUserByEmail, linkUserByUid } =
-    useUsers();
+  const { profile, isAdmin } = useAuth();
+  const {
+    users,
+    loading,
+    error,
+    updateUser,
+    addUser,
+    linkUserByEmail,
+    linkUserByUid,
+    disableUser,
+    enableUser,
+    deleteUser,
+  } = useUsers();
 
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [createMode, setCreateMode] = useState<CreateMode>('create');
+  const [actionUser, setActionUser] = useState<UserProfile | null>(null);
+  const [confirmDisableOpen, setConfirmDisableOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -149,6 +165,63 @@ export function UsersPage() {
     }
   };
 
+  const openDisableConfirm = (user: UserProfile) => {
+    setActionUser(user);
+    setActionError('');
+    setConfirmDisableOpen(true);
+  };
+
+  const openDeleteConfirm = (user: UserProfile) => {
+    setActionUser(user);
+    setActionError('');
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleDisable = async () => {
+    if (!actionUser) return;
+    setActionSubmitting(true);
+    setActionError('');
+    try {
+      await disableUser(actionUser.uid);
+      setConfirmDisableOpen(false);
+      setActionUser(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not disable user.');
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleEnable = async (user: UserProfile) => {
+    setActionError('');
+    setActionSubmitting(true);
+    try {
+      await enableUser(user.uid);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not enable user.');
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!actionUser) return;
+    setActionSubmitting(true);
+    setActionError('');
+    try {
+      await deleteUser(actionUser.uid);
+      setConfirmDeleteOpen(false);
+      setActionUser(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not delete user.');
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const canManageUser = (user: UserProfile) =>
+    isAdmin && user.uid !== profile?.uid;
+
   if (loading) {
     return (
       <div className="loading-screen">
@@ -160,6 +233,9 @@ export function UsersPage() {
   return (
     <div className="page">
       {error && <DataErrorBanner message={error} />}
+      {actionError && !confirmDisableOpen && !confirmDeleteOpen && (
+        <DataErrorBanner message={actionError} />
+      )}
       <PendingAccountsPanel />
       <LeaveRequestsPanel />
       <EmployeeManagementPanel />
@@ -211,8 +287,15 @@ export function UsersPage() {
           {filteredUsers.length === 0 ? (
             <p className="team-empty">No users found for this role.</p>
           ) : (
-            filteredUsers.map((user) => (
-              <article key={user.uid} className="team-member">
+            filteredUsers.map((user) => {
+              const disabled = isAccountRejected(user);
+              const isSelf = user.uid === profile?.uid;
+
+              return (
+              <article
+                key={user.uid}
+                className={clsx('team-member', disabled && 'team-member-disabled')}
+              >
                 <div className="team-member-main">
                   <UserAvatar user={user} size="md" />
                   <div className="team-member-info">
@@ -225,7 +308,8 @@ export function UsersPage() {
                   <Badge variant={roleBadgeVariant(user.role)}>
                     {getRoleLabel(user.role)}
                   </Badge>
-                  {user.accountStatus && user.accountStatus !== 'verified' && (
+                  {disabled && <Badge variant="default">Disabled</Badge>}
+                  {!disabled && user.accountStatus && user.accountStatus !== 'verified' && (
                     <Badge variant={user.accountStatus === 'rejected' ? 'default' : 'warning'}>
                       {getAccountStatusLabel(user.accountStatus)}
                     </Badge>
@@ -235,16 +319,55 @@ export function UsersPage() {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  className="team-member-edit"
-                  onClick={() => openEdit(user)}
-                  aria-label={`Edit ${user.displayName}`}
-                >
-                  <Pencil size={16} />
-                </button>
+                <div className="team-member-actions">
+                  <button
+                    type="button"
+                    className="team-member-edit"
+                    onClick={() => openEdit(user)}
+                    aria-label={`Edit ${user.displayName}`}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  {canManageUser(user) && disabled && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleEnable(user)}
+                      disabled={actionSubmitting}
+                    >
+                      <RotateCcw size={14} />
+                      Enable
+                    </Button>
+                  )}
+                  {canManageUser(user) && !disabled && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openDisableConfirm(user)}
+                      disabled={actionSubmitting}
+                    >
+                      <Ban size={14} />
+                      Disable
+                    </Button>
+                  )}
+                  {canManageUser(user) && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => openDeleteConfirm(user)}
+                      disabled={actionSubmitting}
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </Button>
+                  )}
+                  {isSelf && (
+                    <span className="team-member-self-label">You</span>
+                  )}
+                </div>
               </article>
-            ))
+            );
+            })
           )}
         </div>
       </Card>
@@ -419,6 +542,46 @@ export function UsersPage() {
           {formError && <p className="auth-error">{formError}</p>}
         </form>
       </Modal>
+
+      <ConfirmModal
+        isOpen={confirmDisableOpen}
+        onClose={() => {
+          setConfirmDisableOpen(false);
+          setActionUser(null);
+          setActionError('');
+        }}
+        onConfirm={handleDisable}
+        title="Disable user"
+        message={
+          actionUser
+            ? `Disable ${actionUser.displayName}? They will lose access immediately but their record stays in the team list.`
+            : ''
+        }
+        error={confirmDisableOpen ? actionError : undefined}
+        loading={actionSubmitting}
+        confirmLabel="Disable"
+        loadingLabel="Disabling..."
+      />
+
+      <ConfirmModal
+        isOpen={confirmDeleteOpen}
+        onClose={() => {
+          setConfirmDeleteOpen(false);
+          setActionUser(null);
+          setActionError('');
+        }}
+        onConfirm={handleDelete}
+        title="Delete user"
+        message={
+          actionUser
+            ? `Permanently remove ${actionUser.displayName} from OfficeEx? Their login profile will be deleted and they cannot sign in again unless you re-add them.`
+            : ''
+        }
+        error={confirmDeleteOpen ? actionError : undefined}
+        loading={actionSubmitting}
+        confirmLabel="Delete user"
+        loadingLabel="Deleting..."
+      />
     </div>
   );
 }

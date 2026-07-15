@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CheckCircle2, UserCheck, XCircle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useEmployees } from '../../hooks/useEmployees';
 import { useUsers } from '../../hooks/useUsers';
 import { USER_ROLES } from '../../lib/constants';
@@ -15,6 +16,7 @@ import type { UserRole } from '../../types';
 const TEAM_ROLE_OPTIONS = USER_ROLES.filter((item) => item.value !== 'employee');
 
 export function PendingAccountsPanel() {
+  const { permissions } = useAuth();
   const { users, approveTeam, verifyEmployee, rejectPending } = useUsers();
   const { employees, loading, error } = useEmployees();
   const [selectedEmployeeByUser, setSelectedEmployeeByUser] = useState<Record<string, string>>({});
@@ -84,6 +86,10 @@ export function PendingAccountsPanel() {
       setSubmittingUid(null);
     }
   };
+
+  if (!permissions.canVerifyEmployees) {
+    return null;
+  }
 
   if (loading) {
     return (

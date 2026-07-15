@@ -21,7 +21,7 @@ export function FixedExpensesSection() {
   const { formatNative, formatDisplay, convertToDisplay, displayCurrency } = useCurrency();
   const { saveAmounts, loading, records } = useFixedExpenses();
 
-  const month = filter.month === 'all' ? new Date().getMonth() + 1 : filter.month;
+  const month = filter.month === 'all' ? null : filter.month;
   const year = filter.year;
 
   const [amounts, setAmounts] = useState(createEmptyFixedAmounts());
@@ -30,6 +30,11 @@ export function FixedExpensesSection() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
+    if (month === null) {
+      setAmounts(createEmptyFixedAmounts());
+      setSaved(false);
+      return;
+    }
     const id = getFixedExpenseId(year, month);
     const existing = records.find((record) => record.id === id);
     setAmounts({ ...createEmptyFixedAmounts(), ...existing?.amounts });
@@ -52,7 +57,7 @@ export function FixedExpensesSection() {
   };
 
   const handleSave = async () => {
-    if (!profile || !permissions.canUpdateFixedExpenses) return;
+    if (!profile || !permissions.canUpdateFixedExpenses || month === null) return;
 
     setSubmitting(true);
     try {
@@ -74,13 +79,19 @@ export function FixedExpensesSection() {
         subtitle="Rent, utilities & maintenance — salaries tracked separately"
         action={
           permissions.canUpdateFixedExpenses ? (
-            <Button onClick={handleSave} disabled={submitting}>
+            <Button onClick={handleSave} disabled={submitting || month === null}>
               <Save size={16} />
               {submitting ? 'Saving...' : 'Save Amounts'}
             </Button>
           ) : undefined
         }
       />
+
+      {month === null && (
+        <p className="fixed-expenses-month-warning">
+          Choose a specific month in the filter bar to edit fixed monthly amounts.
+        </p>
+      )}
 
       {permissions.canUpdateFixedExpenses && (
         <div className="fixed-expenses-currency">

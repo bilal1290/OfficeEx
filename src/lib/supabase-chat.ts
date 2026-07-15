@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { reconnectChatPresenceAfterAuth } from './chat-presence';
+import { CHAT_DELETE_NOT_SETUP_MESSAGE } from './chat-delete-setup-sql';
 import { ensureSupabaseChatProfile, syncSupabaseChatFromFirebase } from './supabase-auth';
 import { generateId } from './utils';
 import type { ChatConversation, ChatMessage } from '../types';
@@ -53,6 +54,51 @@ function mapConversation(
 
 export function isSupabaseChatReady(): boolean {
   return isSupabaseConfigured;
+}
+
+export async function checkChatDeleteSupport(): Promise<{
+  ready: boolean;
+  message: string;
+}> {
+  if (!supabase) {
+    return { ready: false, message: 'Supabase is not configured.' };
+  }
+
+  const session = await supabase.auth.getSession();
+  if (!session.data.session) {
+    return {
+      ready: false,
+      message: 'Sign in to OfficeEx and open Chat once before testing delete.',
+    };
+  }
+
+  const { error } = await supabase.rpc('delete_chat_message', {
+    p_message_id: '00000000-0000-4000-a800-000000000099',
+    p_conversation_id: '00000000-0000-4000-a800-000000000099',
+  });
+
+  if (!error) {
+    return { ready: true, message: 'Chat delete is enabled.' };
+  }
+
+  if (isMissingChatRpc(error, 'delete_chat_message')) {
+    return {
+      ready: false,
+      message: CHAT_DELETE_NOT_SETUP_MESSAGE,
+    };
+  }
+
+  const lower = error.message.toLowerCase();
+  if (
+    lower.includes('not authenticated') ||
+    lower.includes('not a member') ||
+    lower.includes('message not found') ||
+    lower.includes('not found')
+  ) {
+    return { ready: true, message: 'Chat delete is enabled.' };
+  }
+
+  return { ready: false, message: formatChatPermissionError(error.message) };
 }
 
 export async function ensureEveryoneMembership(firebaseUid: string): Promise<string> {
@@ -401,18 +447,70 @@ export function isEditableGroup(conversation: ChatConversation): boolean {
   );
 }
 
+export function canLeaveConversation(conversation: ChatConversation): boolean {
+  return conversation.slug !== EVERYONE_SLUG && conversation.slug !== 'everyone';
+}
+
+function formatChatPermissionError(message: string): string {
+  const lower = message.toLowerCase();
+  if (isMissingChatRpc({ message }, 'delete_chat_message')) {
+    return CHAT_DELETE_NOT_SETUP_MESSAGE;
+  }
+  if (
+    lower.includes('row-level security') ||
+    lower.includes('permission denied') ||
+    lower.includes('policy') ||
+    lower.includes('not allowed') ||
+    lower.includes('not permitted')
+  ) {
+    return CHAT_DELETE_NOT_SETUP_MESSAGE;
+  }
+  if (
+    (lower.includes('delete_chat_message') || lower.includes('remove_chat_member')) &&
+    (lower.includes('schema cache') || lower.includes('does not exist') || lower.includes('could not find'))
+  ) {
+    return CHAT_DELETE_NOT_SETUP_MESSAGE;
+  }
+  if (lower.includes('revoke_chat_access') && lower.includes('does not exist')) {
+    return 'Chat revoke function missing. Run the SQL from Settings → Supabase Chat Setup.';
+  }
+  return message;
+}
+
+function isMissingChatRpc(error: { message?: string }, functionName: string): boolean {
+  const lower = error.message?.toLowerCase() ?? '';
+  return (
+    lower.includes(functionName) &&
+    (lower.includes('schema cache') || lower.includes('does not exist') || lower.includes('could not find'))
+  );
+}
+
 export function canRemoveGroupMember(
   conversation: ChatConversation,
   actorFirebaseUid: string,
   targetFirebaseUid: string,
 ): boolean {
-  if (!isEditableGroup(conversation)) return false;
-  if (!conversation.memberIds.includes(actorFirebaseUid)) return false;
-  if (targetFirebaseUid === actorFirebaseUid) return true;
-  return conversation.createdBy === actorFirebaseUid;
+  return canRemoveConversationMember(conversation, actorFirebaseUid, targetFirebaseUid);
 }
 
-async function getGroupConversation(conversationId: string): Promise<ChatConversation> {
+export function canRemoveConversationMember(
+  conversation: ChatConversation,
+  actorFirebaseUid: string,
+  targetFirebaseUid: string,
+): boolean {
+  if (!conversation.memberIds.includes(actorFirebaseUid)) return false;
+  if (!conversation.memberIds.includes(targetFirebaseUid)) return false;
+  return true;
+}
+
+export function canManageConversationMembers(
+  conversation: ChatConversation,
+  actorFirebaseUid: string,
+): boolean {
+  return conversation.memberIds.includes(actorFirebaseUid);
+}
+
+async function getConversationWithMembers(conversationId: string): Promise<ChatConversation> {
   if (!supabase) {
     throw new Error('Supabase is not configured.');
   }
@@ -436,13 +534,17 @@ async function getGroupConversation(conversationId: string): Promise<ChatConvers
     throw new Error(membersError.message);
   }
 
-  const conversation = mapConversation(
+  return mapConversation(
     data,
     (members ?? []).map((row) => row.firebase_uid),
   );
+}
+
+async function getGroupConversation(conversationId: string): Promise<ChatConversation> {
+  const conversation = await getConversationWithMembers(conversationId);
 
   if (!isEditableGroup(conversation)) {
-    throw new Error('Members can only be changed in custom groups.');
+    throw new Error('Members can only be added in custom groups.');
   }
 
   return conversation;
@@ -487,17 +589,81 @@ export async function addGroupMembers(
   };
 }
 
+export async function deleteChatMessage(
+  conversationId: string,
+  messageId: string,
+  actorFirebaseUid: string,
+  actorDisplayName: string,
+): Promise<void> {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  if (messageId.startsWith('pending-')) {
+    throw new Error('Cannot delete a message that is still sending.');
+  }
+
+  await ensureSupabaseChatProfile(actorFirebaseUid, actorDisplayName);
+
+  const conversation = await getConversationWithMembers(conversationId);
+  if (!conversation.memberIds.includes(actorFirebaseUid)) {
+    throw new Error('You are not a member of this conversation.');
+  }
+
+  const { error: rpcError } = await supabase.rpc('delete_chat_message', {
+    p_message_id: messageId,
+    p_conversation_id: conversationId,
+  });
+
+  if (!rpcError) {
+    return;
+  }
+
+  if (isMissingChatRpc(rpcError, 'delete_chat_message')) {
+    throw new Error(CHAT_DELETE_NOT_SETUP_MESSAGE);
+  }
+
+  throw new Error(formatChatPermissionError(rpcError.message));
+}
+
+export async function revokeChatAccessForUser(targetFirebaseUid: string): Promise<number> {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const { data, error } = await supabase.rpc('revoke_chat_access', {
+    target_firebase_uid: targetFirebaseUid,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return typeof data === 'number' ? data : 0;
+}
+
+export async function leaveConversation(
+  conversationId: string,
+  firebaseUid: string,
+  displayName: string,
+): Promise<void> {
+  await removeGroupMember(conversationId, firebaseUid, firebaseUid, displayName);
+}
+
 export async function removeGroupMember(
   conversationId: string,
   actorFirebaseUid: string,
   targetFirebaseUid: string,
+  actorDisplayName = 'User',
 ): Promise<ChatConversation | null> {
   if (!supabase) {
     throw new Error('Supabase is not configured.');
   }
 
-  const conversation = await getGroupConversation(conversationId);
-  if (!canRemoveGroupMember(conversation, actorFirebaseUid, targetFirebaseUid)) {
+  await ensureSupabaseChatProfile(actorFirebaseUid, actorDisplayName);
+
+  const conversation = await getConversationWithMembers(conversationId);
+  if (!canRemoveConversationMember(conversation, actorFirebaseUid, targetFirebaseUid)) {
     throw new Error('You cannot remove this member.');
   }
 
@@ -505,18 +671,17 @@ export async function removeGroupMember(
     return conversation;
   }
 
-  if (conversation.memberIds.length <= 2 && targetFirebaseUid !== actorFirebaseUid) {
-    throw new Error('A group must keep at least two members.');
+  const { error: rpcError } = await supabase.rpc('remove_chat_member', {
+    p_conversation_id: conversationId,
+    p_target_firebase_uid: targetFirebaseUid,
+  });
+
+  if (rpcError && isMissingChatRpc(rpcError, 'remove_chat_member')) {
+    throw new Error(CHAT_DELETE_NOT_SETUP_MESSAGE);
   }
 
-  const { error } = await supabase
-    .from('chat_conversation_members')
-    .delete()
-    .eq('conversation_id', conversationId)
-    .eq('firebase_uid', targetFirebaseUid);
-
-  if (error) {
-    throw new Error(error.message);
+  if (rpcError) {
+    throw new Error(formatChatPermissionError(rpcError.message));
   }
 
   const nextMemberIds = conversation.memberIds.filter((uid) => uid !== targetFirebaseUid);
@@ -531,6 +696,7 @@ export async function removeGroupMember(
 }
 
 type MessageListener = (message: ChatMessage) => void;
+type MessageDeleteListener = (messageId: string) => void;
 type ResyncListener = (conversationId: string) => void;
 type ConnectionListener = (status: ChatConnectionStatus) => void;
 
@@ -549,7 +715,9 @@ function setConnectionStatus(next: ChatConnectionStatus): void {
 }
 
 function getActiveSubscriptions(): ConversationSubscription[] {
-  return [...conversationSubscriptions.values()].filter((entry) => entry.listeners.size > 0);
+  return [...conversationSubscriptions.values()].filter(
+    (entry) => entry.listeners.size > 0 || entry.deleteListeners.size > 0,
+  );
 }
 
 function refreshConnectionStatus(): void {
@@ -669,7 +837,7 @@ export async function reconnectChatRealtimeAfterAuth(): Promise<void> {
   }
 
   for (const [conversationId, entry] of conversationSubscriptions) {
-    if (entry.listeners.size === 0) continue;
+    if (entry.listeners.size === 0 && entry.deleteListeners.size === 0) continue;
 
     if (entry.retryTimer) {
       clearTimeout(entry.retryTimer);
@@ -755,6 +923,7 @@ export function createOptimisticMessageId(): string {
 
 interface ConversationSubscription {
   listeners: Set<MessageListener>;
+  deleteListeners: Set<MessageDeleteListener>;
   channel: ReturnType<NonNullable<typeof supabase>['channel']> | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
   isSubscribed: boolean;
@@ -768,6 +937,15 @@ function dispatchConversationMessage(conversationId: string, message: ChatMessag
 
   for (const listener of entry.listeners) {
     listener(message);
+  }
+}
+
+function dispatchConversationMessageDelete(conversationId: string, messageId: string): void {
+  const entry = conversationSubscriptions.get(conversationId);
+  if (!entry) return;
+
+  for (const listener of entry.deleteListeners) {
+    listener(messageId);
   }
 }
 
@@ -806,6 +984,21 @@ function ensureConversationChannel(
         }
       },
     )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        const row = payload.old as { id?: string };
+        if (row?.id) {
+          dispatchConversationMessageDelete(conversationId, row.id);
+        }
+      },
+    )
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         if (!entry.isSubscribed) {
@@ -828,7 +1021,10 @@ function ensureConversationChannel(
         }
         entry.channel = null;
 
-        if (entry.listeners.size > 0 && !entry.retryTimer) {
+        if (
+          (entry.listeners.size > 0 || entry.deleteListeners.size > 0) &&
+          !entry.retryTimer
+        ) {
           entry.retryTimer = setTimeout(() => {
             entry.retryTimer = null;
             ensureConversationChannel(conversationId, entry);
@@ -858,6 +1054,7 @@ function teardownConversationChannel(
 export function subscribeToConversationMessages(
   conversationId: string,
   onInsert: (message: ChatMessage) => void,
+  onDelete?: (messageId: string) => void,
 ): () => void {
   if (!supabase) {
     return () => undefined;
@@ -865,11 +1062,20 @@ export function subscribeToConversationMessages(
 
   let entry = conversationSubscriptions.get(conversationId);
   if (!entry) {
-    entry = { listeners: new Set(), channel: null, retryTimer: null, isSubscribed: false };
+    entry = {
+      listeners: new Set(),
+      deleteListeners: new Set(),
+      channel: null,
+      retryTimer: null,
+      isSubscribed: false,
+    };
     conversationSubscriptions.set(conversationId, entry);
   }
 
   entry.listeners.add(onInsert);
+  if (onDelete) {
+    entry.deleteListeners.add(onDelete);
+  }
   ensureChatConnectionMonitor();
   ensureChatAuthReconnect();
   ensureConversationChannel(conversationId, entry);
@@ -880,7 +1086,10 @@ export function subscribeToConversationMessages(
     if (!current) return;
 
     current.listeners.delete(onInsert);
-    if (current.listeners.size === 0) {
+    if (onDelete) {
+      current.deleteListeners.delete(onDelete);
+    }
+    if (current.listeners.size === 0 && current.deleteListeners.size === 0) {
       teardownConversationChannel(conversationId, current);
     } else {
       refreshConnectionStatus();

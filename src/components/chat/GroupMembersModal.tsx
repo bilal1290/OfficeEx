@@ -3,11 +3,12 @@ import { UserMinus, UserPlus, X } from 'lucide-react';
 import { UserAvatar } from '../ui/UserAvatar';
 import { Button } from '../ui/Button';
 import {
-  canRemoveGroupMember,
+  canManageConversationMembers,
+  canRemoveConversationMember,
   isEditableGroup,
 } from '../../lib/supabase-chat';
 import { getChatEligibleUsers } from '../../lib/chat-users';
-import { clsx } from '../../lib/utils';
+import { useRolePermissions } from '../../context/RolePermissionsContext';
 import type { ChatConversation, UserProfile } from '../../types';
 
 interface GroupMembersModalProps {
@@ -20,6 +21,20 @@ interface GroupMembersModalProps {
   onRemoveMember: (memberUid: string) => Promise<void>;
 }
 
+function resolveMemberProfile(
+  uid: string,
+  users: UserProfile[],
+): Pick<UserProfile, 'uid' | 'displayName' | 'email' | 'photoURL'> {
+  const existing = users.find((user) => user.uid === uid);
+  if (existing) return existing;
+
+  return {
+    uid,
+    displayName: 'Removed user',
+    email: 'No longer has access',
+  };
+}
+
 export function GroupMembersModal({
   conversation,
   users,
@@ -29,29 +44,29 @@ export function GroupMembersModal({
   onAddMembers,
   onRemoveMember,
 }: GroupMembersModalProps) {
+  const { config: rolePermissionsConfig } = useRolePermissions();
   const [selectedToAdd, setSelectedToAdd] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [removingUid, setRemovingUid] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const isCreator = conversation.createdBy === myUid;
-  const canManage = isEditableGroup(conversation) && conversation.memberIds.includes(myUid);
+  const canManage = canManageConversationMembers(conversation, myUid);
+  const canAddMembers = isEditableGroup(conversation) && canManage;
 
   const members = useMemo(
     () =>
       conversation.memberIds
-        .map((uid) => users.find((user) => user.uid === uid))
-        .filter((user): user is UserProfile => Boolean(user))
+        .map((uid) => resolveMemberProfile(uid, users))
         .sort((a, b) => a.displayName.localeCompare(b.displayName)),
     [conversation.memberIds, users],
   );
 
   const addCandidates = useMemo(
     () =>
-      getChatEligibleUsers(users, myUid).filter(
+      getChatEligibleUsers(users, myUid, rolePermissionsConfig).filter(
         (user) => !conversation.memberIds.includes(user.uid),
       ),
-    [users, myUid, conversation.memberIds],
+    [users, myUid, conversation.memberIds, rolePermissionsConfig],
   );
 
   const toggleAdd = (uid: string) => {
@@ -75,6 +90,10 @@ export function GroupMembersModal({
   };
 
   const handleRemove = async (uid: string) => {
+    const member = members.find((item) => item.uid === uid);
+    const actionLabel = uid === myUid ? 'leave this conversation' : `remove ${member?.displayName ?? 'this member'} from chat`;
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
+
     setError('');
     setRemovingUid(uid);
     try {
@@ -90,55 +109,70 @@ export function GroupMembersModal({
     return null;
   }
 
+  const title =
+    conversation.slug === 'everyone' || conversation.name === 'Everyone'
+      ? 'Everyone members'
+      : conversation.type === 'direct'
+        ? 'Direct message members'
+        : 'Group members';
+
   return (
     <div className="chat-modal-backdrop" onClick={onClose}>
       <div className="chat-modal chat-modal-wide" onClick={(event) => event.stopPropagation()}>
         <div className="chat-modal-head">
-          <h3>Group members</h3>
+          <h3>{title}</h3>
           <button type="button" className="chat-modal-close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
 
-        <p className="chat-modal-label">{conversation.name ?? 'Group'}</p>
+        <p className="chat-modal-label">{conversation.name ?? 'Conversation'}</p>
 
         <ul className="chat-member-list">
           {members.map((member) => {
-            const canRemove = canRemoveGroupMember(conversation, myUid, member.uid);
+            const canRemove = canRemoveConversationMember(conversation, myUid, member.uid);
             const removeLabel = member.uid === myUid ? 'Leave' : 'Remove';
 
             return (
               <li key={member.uid} className="chat-member-item">
-                <UserAvatar user={member} size="sm" showOnline isOnline={isUserOnline(member.uid)} />
+                <UserAvatar
+                  user={member}
+                  size="sm"
+                  showOnline={member.displayName !== 'Removed user'}
+                  isOnline={isUserOnline(member.uid)}
+                />
                 <div className="chat-member-copy">
                   <span className="chat-member-name">{member.displayName}</span>
                   <span className="chat-member-email">
-                    {isUserOnline(member.uid) ? 'Online now' : member.email}
+                    {member.displayName === 'Removed user'
+                      ? member.email
+                      : isUserOnline(member.uid)
+                        ? 'Online now'
+                        : member.email}
                   </span>
                 </div>
                 {member.uid === conversation.createdBy && (
                   <span className="chat-member-role">Creator</span>
                 )}
                 {canRemove && (
-                  <button
+                  <Button
                     type="button"
-                    className={clsx(
-                      'chat-member-action',
-                      member.uid === myUid && 'chat-member-action-leave',
-                    )}
+                    variant={member.uid === myUid ? 'secondary' : 'danger'}
+                    size="sm"
+                    className="chat-member-remove-btn"
                     disabled={removingUid === member.uid}
                     onClick={() => void handleRemove(member.uid)}
                   >
                     <UserMinus size={14} />
                     {removingUid === member.uid ? 'Removing…' : removeLabel}
-                  </button>
+                  </Button>
                 )}
               </li>
             );
           })}
         </ul>
 
-        {addCandidates.length > 0 && (
+        {canAddMembers && addCandidates.length > 0 && (
           <>
             <p className="chat-modal-label">
               <UserPlus size={14} />
@@ -169,9 +203,9 @@ export function GroupMembersModal({
           </>
         )}
 
-        {!isCreator && (
-          <p className="chat-member-hint">Only the group creator can remove other members.</p>
-        )}
+        <p className="chat-member-hint">
+          Any member can remove others from this conversation or delete any message.
+        </p>
 
         {error && <p className="form-error">{error}</p>}
       </div>

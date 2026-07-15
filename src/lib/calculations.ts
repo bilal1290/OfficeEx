@@ -2,7 +2,6 @@ import { FIXED_EXPENSE_AMOUNT_CATEGORIES } from './constants';
 import { convertCurrency, resolveCurrency } from './currency';
 import {
   computeOfficeSpendBreakdown,
-  sumFixedOfficeSpendForMonth,
   sumTotalOfficeSpend,
 } from './office-totals';
 import { sumPaidSalaries } from './salaries';
@@ -237,17 +236,23 @@ export function computeMonthlyBalances(
   year: number,
   conversion: CurrencyConversion,
   fixedRecords: FixedMonthlyExpenses[] = [],
+  ownerId: string | 'all' = 'all',
 ): MonthlyBalance[] {
   return Array.from({ length: 12 }, (_, i) => {
     const month = i + 1;
+    const monthFilter: FilterState = { year, month, ownerId };
+
     const monthIncomes = incomes.filter(
-      (inc) => inc.year === year && inc.month === month,
+      (inc) =>
+        inc.year === year &&
+        inc.month === month &&
+        (ownerId === 'all' || inc.ownerId === ownerId),
     );
     const monthOwnerExpenses = ownerExpenses.filter(
-      (e) => e.year === year && e.month === month,
-    );
-    const monthOfficeExpenses = officeExpenses.filter(
-      (e) => e.year === year && e.month === month,
+      (e) =>
+        e.year === year &&
+        e.month === month &&
+        (ownerId === 'all' || e.ownerId === ownerId),
     );
 
     const income = monthIncomes.reduce(
@@ -261,12 +266,7 @@ export function computeMonthlyBalances(
           sum + toDisplay(record.amount, record.currency, conversion),
         0,
       ) +
-      monthOfficeExpenses.reduce(
-        (sum, record) =>
-          sum + toDisplay(record.amount, record.currency, conversion),
-        0,
-      ) +
-      sumFixedOfficeSpendForMonth(fixedRecords, year, month, conversion);
+      sumTotalOfficeSpend(fixedRecords, officeExpenses, monthFilter, conversion);
 
     return { month, year, income, expenses, balance: income - expenses };
   });
