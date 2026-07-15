@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, Gift, MessageCircle, MinusCircle, Palmtree, Wallet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useEmployeePayslips } from '../hooks/useEmployeePayslips';
+import { useEmployeeRecord } from '../hooks/useEmployeeRecord';
 import { AttendancePanel } from '../components/employee/AttendancePanel';
 import { LeavePanel } from '../components/employee/LeavePanel';
 import { MONTHS } from '../lib/constants';
@@ -76,10 +77,17 @@ function PayslipBreakdown({ payslip }: { payslip: EmployeePayslip }) {
 }
 
 function SalaryTab({ employeeId }: { employeeId: string }) {
-  const { payslips, loading, error } = useEmployeePayslips(employeeId);
+  const { payslips, loading: payslipsLoading, error: payslipsError } =
+    useEmployeePayslips(employeeId);
+  const { employee, loading: employeeLoading, error: employeeError } =
+    useEmployeeRecord(employeeId);
+  const { formatNative, displayCurrency } = useCurrency();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState<number | 'all'>('all');
+
+  const loading = payslipsLoading || employeeLoading;
+  const error = payslipsError ?? employeeError;
 
   const yearOptions = useMemo(() => {
     const years = new Set(payslips.map((item) => item.year));
@@ -110,6 +118,21 @@ function SalaryTab({ employeeId }: { employeeId: string }) {
   return (
     <div className="employee-portal-tab">
       {error && <DataErrorBanner message={error} />}
+
+      {employee && (
+        <Card className="my-salary-current-card">
+          <CardHeader
+            title="Current monthly salary"
+            subtitle="Base salary on file with your administrator"
+          />
+          <p className="my-salary-current-value">
+            {formatNative(
+              employee.monthlySalary,
+              employee.currency ?? displayCurrency,
+            )}
+          </p>
+        </Card>
+      )}
 
       <Card className="my-salary-hero">
         <CardHeader
@@ -166,7 +189,14 @@ function SalaryTab({ employeeId }: { employeeId: string }) {
 export function EmployeePortalPage() {
   const { profile, permissions } = useAuth();
   const employeeId = profile?.employeeId;
-  const [tab, setTab] = useState<PortalTab>('salary');
+  const canViewSalary = permissions.canViewOwnSalary;
+  const [tab, setTab] = useState<PortalTab>(canViewSalary ? 'salary' : 'attendance');
+
+  useEffect(() => {
+    if (!canViewSalary && tab === 'salary') {
+      setTab('attendance');
+    }
+  }, [canViewSalary, tab]);
 
   if (!employeeId) {
     return (
@@ -191,16 +221,18 @@ export function EmployeePortalPage() {
           subtitle={`Welcome, ${profile?.displayName ?? 'Employee'}`}
         />
         <div className="employee-portal-tabs" role="tablist" aria-label="Employee portal">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'salary'}
-            className={clsx('employee-portal-tab-btn', tab === 'salary' && 'active')}
-            onClick={() => setTab('salary')}
-          >
-            <Wallet size={16} />
-            Salary
-          </button>
+          {canViewSalary && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'salary'}
+              className={clsx('employee-portal-tab-btn', tab === 'salary' && 'active')}
+              onClick={() => setTab('salary')}
+            >
+              <Wallet size={16} />
+              Salary
+            </button>
+          )}
           <button
             type="button"
             role="tab"
@@ -224,10 +256,10 @@ export function EmployeePortalPage() {
         </div>
       </Card>
 
-      {tab === 'salary' ? (
+      {tab === 'salary' && canViewSalary ? (
         <SalaryTab employeeId={employeeId} />
       ) : tab === 'attendance' ? (
-        <AttendancePanel employeeId={employeeId} />
+        <AttendancePanel employeeId={employeeId} restrictToToday />
       ) : (
         <LeavePanel employeeId={employeeId} employeeName={profile?.displayName ?? 'Employee'} />
       )}

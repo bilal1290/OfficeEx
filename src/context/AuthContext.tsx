@@ -18,6 +18,7 @@ import { ensureUserProfile, createEmployeeProfile } from '../lib/auth-api';
 import { completeGoogleRedirectSignIn, signInWithGoogle as firebaseGoogleSignIn } from '../lib/google-auth';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import { getPermissions, isVerifiedEmployee, type Permissions } from '../lib/permissions';
+import { useRolePermissions } from './RolePermissionsContext';
 import { notifyAdminsOfRegistration } from '../lib/registration-notify';
 import { signOutSupabase, syncSupabaseSession } from '../lib/supabase-auth';
 import { isAccountApproved, needsAdminApproval } from '../lib/account-status';
@@ -118,14 +119,21 @@ async function loadOrCreateProfile(firebaseUser: User): Promise<UserProfile | nu
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { config: rolePermissionsConfig } = useRolePermissions();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(isFirebaseConfigured);
 
   const role = profile?.role;
   const permissions = useMemo(
-    () => getPermissions(role, profile?.accountStatus, profile?.employeeId),
-    [role, profile?.accountStatus, profile?.employeeId],
+    () =>
+      getPermissions(
+        role,
+        profile?.accountStatus,
+        profile?.employeeId,
+        rolePermissionsConfig,
+      ),
+    [role, profile?.accountStatus, profile?.employeeId, rolePermissionsConfig],
   );
   const verifiedEmployee = isVerifiedEmployee(
     role,

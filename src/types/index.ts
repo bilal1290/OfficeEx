@@ -240,6 +240,7 @@ export interface ChatMessage {
   /** Optimistic client id — used until the server assigns a real id */
   clientId?: string;
   status?: 'pending' | 'sent' | 'failed';
+  mentionedUids?: string[];
 }
 
 export type ChatConversationType = 'direct' | 'group';

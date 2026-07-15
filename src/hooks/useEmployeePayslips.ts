@@ -29,7 +29,11 @@ export function useEmployeePayslips(employeeId?: string) {
       },
       (err) => {
         console.error('Employee payslips listener error:', err);
-        setError(err.message);
+        setError(
+          err.message.includes('permission_denied')
+            ? 'Unable to load salary records. Ask an administrator to verify your account is linked.'
+            : err.message,
+        );
         setLoading(false);
       },
     );

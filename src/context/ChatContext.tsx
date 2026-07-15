@@ -293,6 +293,7 @@ export function ChatProvider({
         text: trimmed,
         createdAt: Date.now(),
         status: 'pending',
+        mentionedUids,
       };
 
       appendToCache(conversationId, optimistic);
@@ -337,6 +338,7 @@ export function ChatProvider({
           senderId,
           senderName,
           failed.text,
+          failed.mentionedUids ?? [],
         );
         const latest = messageCacheRef.current[conversationId] ?? [];
         patchCache(

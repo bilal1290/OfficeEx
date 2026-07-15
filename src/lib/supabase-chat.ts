@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { reconnectChatPresenceAfterAuth } from './chat-presence';
 import { ensureSupabaseChatProfile, syncSupabaseChatFromFirebase } from './supabase-auth';
+import { generateId } from './utils';
 import type { ChatConversation, ChatMessage } from '../types';
 
 export const EVERYONE_CONVERSATION_ID = '00000000-0000-4000-a800-000000000001';
@@ -749,7 +750,7 @@ function mergeMessages(existing: ChatMessage[], incoming: ChatMessage[]): ChatMe
 }
 
 export function createOptimisticMessageId(): string {
-  return `pending-${crypto.randomUUID()}`;
+  return `pending-${generateId()}`;
 }
 
 interface ConversationSubscription {

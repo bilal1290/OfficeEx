@@ -3,6 +3,7 @@ import { onValue, ref, set } from 'firebase/database';
 import {
   filterAttendanceByMonth,
   formatAttendanceDateKey,
+  canEmployeeSelfMarkAttendanceDate,
   normalizeAttendanceRecords,
   serializeAttendanceForDatabase,
 } from '../lib/attendance';
@@ -57,9 +58,14 @@ export function useEmployeeAttendance(employeeId?: string) {
     status: AttendanceStatus,
     markedBy: string,
     note?: string,
+    options?: { todayOnly?: boolean },
   ) => {
     if (!db || !employeeId) {
       throw new Error('Attendance is not available.');
+    }
+
+    if (options?.todayOnly && !canEmployeeSelfMarkAttendanceDate(date)) {
+      throw new Error('You can only mark attendance for today.');
     }
 
     const record: AttendanceRecord = {

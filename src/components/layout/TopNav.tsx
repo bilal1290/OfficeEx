@@ -25,6 +25,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { getRoleLabel } from '../../lib/permissions';
 import { clsx } from '../../lib/utils';
 import { Button } from '../ui/Button';
+import { Tooltip } from '../ui/Tooltip';
 import { UserAvatar } from '../ui/UserAvatar';
 import { ChatNotificationBell } from '../chat/ChatNotificationBell';
 
@@ -335,22 +336,31 @@ export function TopNav() {
                 </span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={toggleColorScheme} aria-label="Toggle theme">
-              {resolvedColorScheme === 'dark' ? (
-                <Sun size={18} />
-              ) : (
-                <Moon size={18} />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={logout}
-              aria-label="Sign out"
-              className="topnav-logout-desktop"
-            >
-              <LogOut size={18} />
-            </Button>
+            <Tooltip label={resolvedColorScheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleColorScheme}
+                aria-label="Toggle theme"
+              >
+                {resolvedColorScheme === 'dark' ? (
+                  <Sun size={18} />
+                ) : (
+                  <Moon size={18} />
+                )}
+              </Button>
+            </Tooltip>
+            <Tooltip label="Sign out">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={logout}
+                aria-label="Sign out"
+                className="topnav-logout-desktop"
+              >
+                <LogOut size={18} />
+              </Button>
+            </Tooltip>
             <div className="topnav-avatar-mobile-wrap" aria-hidden>
               {profileAvatar}
             </div>

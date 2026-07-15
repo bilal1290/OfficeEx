@@ -17,6 +17,7 @@ export function ChatToastStack() {
             <button
               type="button"
               className="chat-toast-main"
+              aria-label={`Open message from ${toast.title}`}
               onClick={() => openNotification(notification)}
             >
               <strong>{toast.title}</strong>

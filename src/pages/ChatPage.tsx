@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
   MessageCircle,
   Plus,
   RefreshCw,
+  Search,
+  Star,
   UserPlus,
   Users,
   X,
@@ -14,6 +18,7 @@ import { ChatProvider, useChat } from '../context/ChatContext';
 import { useUsers } from '../hooks/useUsers';
 import { ChatComposer } from '../components/chat/ChatComposer';
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { ChatQuickSwitcher } from '../components/chat/ChatQuickSwitcher';
 import { ConversationAvatar } from '../components/chat/ConversationAvatar';
 import { getChatEligibleUsers } from '../lib/chat-users';
 import { UserAvatar } from '../components/ui/UserAvatar';
@@ -34,6 +39,18 @@ import {
   sortConversationsByActivity,
   type ConversationActivity,
 } from '../lib/chat-activity';
+import {
+  getStarredConversationIds,
+  isSectionCollapsed,
+  setSectionCollapsed,
+  toggleStarredConversation,
+} from '../lib/chat-preferences';
+import {
+  countUnreadMessagesSince,
+  firstUnreadMessageId,
+  getConversationLastRead,
+  hasUnreadSince,
+} from '../lib/chat-unread';
 import { formatSidebarTimestamp } from '../lib/datetime';
 import type { ChatConnectionStatus } from '../lib/supabase-chat';
 import type { ChatConversation, UserProfile } from '../types';
@@ -80,8 +97,24 @@ function NewDirectModal({
   };
 
   return (
-    <div className="chat-modal-backdrop" onClick={onClose}>
-      <div className="chat-modal" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="chat-modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose();
+      }}
+    >
+      <div
+        className="chat-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="New message"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onClose();
+        }}
+      >
         <div className="chat-modal-head">
           <h3>New message</h3>
           <button type="button" className="chat-modal-close" onClick={onClose} aria-label="Close">
@@ -154,8 +187,25 @@ function NewGroupModal({
   };
 
   return (
-    <div className="chat-modal-backdrop" onClick={onClose}>
-      <form className="chat-modal" onClick={(event) => event.stopPropagation()} onSubmit={handleSubmit}>
+    <div
+      className="chat-modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose();
+      }}
+    >
+      <form
+        className="chat-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="New group"
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={handleSubmit}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onClose();
+        }}
+      >
         <div className="chat-modal-head">
           <h3>New group</h3>
           <button type="button" className="chat-modal-close" onClick={onClose} aria-label="Close">
@@ -227,8 +277,17 @@ function ChatPageContent() {
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [mobileShowThread, setMobileShowThread] = useState(false);
+  const [sidebarQuery, setSidebarQuery] = useState('');
+  const [showQuickSwitcher, setShowQuickSwitcher] = useState(false);
+  const [starredIds, setStarredIds] = useState<string[]>([]);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [newMessagesBelow, setNewMessagesBelow] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const prevConversationRef = useRef<string | null>(null);
+  const prevLastMessageIdRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef(true);
+  const unreadAnchorRef = useRef<string | null>(null);
 
   const chatUsers = useMemo(
     () => getChatEligibleUsers(users, profile?.uid),
@@ -293,6 +352,67 @@ function ChatPageContent() {
     [sortedConversations],
   );
 
+  const starredConversations = useMemo(
+    () => sortedConversations.filter((conversation) => starredIds.includes(conversation.id)),
+    [sortedConversations, starredIds],
+  );
+
+  useEffect(() => {
+    if (!profile?.uid) return;
+    setStarredIds(getStarredConversationIds(profile.uid));
+    setCollapsedSections({
+      starred: isSectionCollapsed(profile.uid, 'starred'),
+      channels: isSectionCollapsed(profile.uid, 'channels'),
+      groups: isSectionCollapsed(profile.uid, 'groups'),
+      direct: isSectionCollapsed(profile.uid, 'direct'),
+    });
+  }, [profile?.uid]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setShowQuickSwitcher(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const resolveUnreadCount = useCallback(
+    (conversationId: string, activity?: ConversationActivity) => {
+      const notificationUnread = getConversationUnreadCount(conversationId);
+      if (!profile?.uid || !activity) return notificationUnread;
+
+      const lastRead = getConversationLastRead(profile.uid, conversationId);
+      if (!hasUnreadSince(activity.lastMessageAt, lastRead, profile.uid, activity.lastSenderId)) {
+        return notificationUnread;
+      }
+
+      if (conversationId === activeConversationId) {
+        return Math.max(
+          notificationUnread,
+          countUnreadMessagesSince(messages, lastRead, profile.uid),
+        );
+      }
+
+      return Math.max(notificationUnread, 1);
+    },
+    [getConversationUnreadCount, profile?.uid, activeConversationId, messages],
+  );
+
+  const toggleSection = (section: 'starred' | 'channels' | 'groups' | 'direct') => {
+    if (!profile?.uid) return;
+    const next = !collapsedSections[section];
+    setCollapsedSections((current) => ({ ...current, [section]: next }));
+    setSectionCollapsed(profile.uid, section, next);
+  };
+
+  const handleToggleStar = (conversationId: string) => {
+    if (!profile?.uid) return;
+    setStarredIds(toggleStarredConversation(profile.uid, conversationId));
+  };
+
   const activeTitle = activeConversation && profile?.uid
     ? getConversationTitle(activeConversation, profile.uid, nameByUid)
     : 'Chat';
@@ -314,9 +434,117 @@ function ChatPageContent() {
     return 'Offline';
   }, [activeConversation, profile?.uid, getOnlineCount, isUserOnline]);
 
+  const filterConversations = useCallback(
+    (items: ChatConversation[]) => {
+      const query = sidebarQuery.trim().toLowerCase();
+      if (!query) return items;
+
+      return items.filter((conversation) => {
+        const title = profile?.uid
+          ? getConversationTitle(conversation, profile.uid, nameByUid).toLowerCase()
+          : (conversation.name ?? 'Chat').toLowerCase();
+        const preview = sidebarPreviewLine(
+          conversationActivity.get(conversation.id),
+          profile?.uid,
+        ).toLowerCase();
+        return title.includes(query) || preview.includes(query);
+      });
+    },
+    [sidebarQuery, profile?.uid, nameByUid, conversationActivity],
+  );
+
+  const filteredEveryone = useMemo(
+    () => filterConversations(everyoneConversations),
+    [filterConversations, everyoneConversations],
+  );
+  const filteredGroups = useMemo(
+    () => filterConversations(groupConversations),
+    [filterConversations, groupConversations],
+  );
+  const filteredDirect = useMemo(
+    () => filterConversations(directConversations),
+    [filterConversations, directConversations],
+  );
+
+  const hasSidebarResults =
+    filteredEveryone.length + filteredGroups.length + filteredDirect.length > 0;
+
+  const composerLabel = useMemo(() => {
+    if (!activeConversation || !profile?.uid) return undefined;
+    const title = getConversationTitle(activeConversation, profile.uid, nameByUid);
+    if (activeConversation.slug === EVERYONE_SLUG) return `#${title.replace(/^#/, '')}`;
+    if (activeConversation.type === 'group') return title;
+    return title;
+  }, [activeConversation, profile?.uid, nameByUid]);
+
+  const firstUnreadId = useMemo(() => {
+    if (!profile?.uid || !activeConversationId) return null;
+    const lastRead = getConversationLastRead(profile.uid, activeConversationId);
+    return firstUnreadMessageId(messages, lastRead, profile.uid);
+  }, [profile?.uid, activeConversationId, messages]);
+
+  const emptyThreadCopy = useMemo(() => {
+    if (!activeConversation) return 'Select a conversation to start messaging.';
+    if (activeConversation.slug === EVERYONE_SLUG) {
+      return 'This is your team channel. Say hi to everyone.';
+    }
+    if (activeConversation.type === 'group') {
+      return 'No messages in this group yet. Start the conversation.';
+    }
+    return 'This is the beginning of your direct message history.';
+  }, [activeConversation]);
+
+  const handleMessagesScroll = () => {
+    const element = messagesRef.current;
+    if (!element) return;
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    isNearBottomRef.current = distanceFromBottom < 120;
+    if (isNearBottomRef.current) {
+      setNewMessagesBelow(0);
+    }
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    bottomRef.current?.scrollIntoView({ behavior });
+    setNewMessagesBelow(0);
+    isNearBottomRef.current = true;
+  };
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, activeConversationId]);
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageId = lastMessage?.id ?? null;
+    const conversationChanged = activeConversationId !== prevConversationRef.current;
+
+    if (conversationChanged) {
+      prevConversationRef.current = activeConversationId;
+      prevLastMessageIdRef.current = lastMessageId;
+      isNearBottomRef.current = true;
+      setNewMessagesBelow(0);
+
+      if (firstUnreadId && unreadAnchorRef.current !== activeConversationId) {
+        unreadAnchorRef.current = activeConversationId;
+        requestAnimationFrame(() => {
+          document.getElementById(`chat-message-${firstUnreadId}`)?.scrollIntoView({
+            behavior: 'auto',
+            block: 'center',
+          });
+        });
+        return;
+      }
+
+      scrollToBottom('auto');
+      return;
+    }
+
+    if (lastMessageId && lastMessageId !== prevLastMessageIdRef.current) {
+      prevLastMessageIdRef.current = lastMessageId;
+      if (isNearBottomRef.current) {
+        scrollToBottom(window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
+      } else if (lastMessage?.senderId !== profile?.uid) {
+        setNewMessagesBelow((current) => current + 1);
+      }
+    }
+  }, [messages, activeConversationId, firstUnreadId, profile?.uid]);
 
   useEffect(() => {
     const conversationParam = searchParams.get('c');
@@ -329,11 +557,14 @@ function ChatPageContent() {
 
   useEffect(() => {
     setViewingConversationId(activeConversationId);
-    if (activeConversationId) {
-      void markConversationRead(activeConversationId);
+    if (activeConversationId && profile?.uid) {
+      const latest = [...messages]
+        .reverse()
+        .find((message) => message.status !== 'pending' && message.status !== 'failed');
+      void markConversationRead(activeConversationId, latest?.createdAt ?? Date.now());
     }
     return () => setViewingConversationId(null);
-  }, [activeConversationId, markConversationRead, setViewingConversationId]);
+  }, [activeConversationId, messages, markConversationRead, profile?.uid, setViewingConversationId]);
 
   const handleSend = async (text: string) => {
     const mentionedUids = extractMentionedUids(text, usersByDisplayName);
@@ -347,6 +578,17 @@ function ChatPageContent() {
 
   const handleRefresh = () => {
     void refreshConversations().then(() => refreshMessages());
+  };
+
+  const handleLoadOlder = () => {
+    const element = messagesRef.current;
+    const previousHeight = element?.scrollHeight ?? 0;
+    void loadOlderMessages().then(() => {
+      requestAnimationFrame(() => {
+        if (!element) return;
+        element.scrollTop = element.scrollHeight - previousHeight;
+      });
+    });
   };
 
   if (!isConfigured) {
@@ -377,7 +619,7 @@ function ChatPageContent() {
             <Button
               variant="ghost"
               size="sm"
-              title="New message"
+              aria-label="Start a direct message"
               onClick={() => setShowDirectModal(true)}
             >
               <UserPlus size={16} />
@@ -385,7 +627,7 @@ function ChatPageContent() {
             <Button
               variant="ghost"
               size="sm"
-              title="New group"
+              aria-label="Create a group"
               onClick={() => setShowGroupModal(true)}
             >
               <Plus size={16} />
@@ -393,11 +635,95 @@ function ChatPageContent() {
           </div>
         </div>
 
+        <div className="chat-sidebar-search">
+          <Search size={15} className="chat-sidebar-search-icon" aria-hidden />
+          <input
+            type="search"
+            className="chat-sidebar-search-input"
+            value={sidebarQuery}
+            onChange={(event) => setSidebarQuery(event.target.value)}
+            placeholder="Search or jump with ⌘K"
+            aria-label="Search conversations"
+          />
+          {sidebarQuery && (
+            <button
+              type="button"
+              className="chat-sidebar-search-clear"
+              aria-label="Clear search"
+              onClick={() => setSidebarQuery('')}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
         <nav className="chat-conversation-list">
-          {everyoneConversations.length > 0 && (
+          {loading && conversations.length === 0 && (
+            <div className="chat-sidebar-empty">
+              <div className="spinner" />
+              <p>Loading conversations…</p>
+            </div>
+          )}
+
+          {!loading && !hasSidebarResults && starredConversations.length === 0 && (
+            <div className="chat-sidebar-empty">
+              <MessageCircle size={22} />
+              <p>{sidebarQuery ? 'No conversations match your search.' : 'No conversations yet.'}</p>
+              {!sidebarQuery && (
+                <Button variant="secondary" size="sm" onClick={() => setShowDirectModal(true)}>
+                  Start a message
+                </Button>
+              )}
+            </div>
+          )}
+
+          {starredConversations.length > 0 && (
             <section className="chat-conversation-section">
-              <p className="chat-conversation-section-label">Channels</p>
-              {everyoneConversations.map((conversation) => (
+              <button
+                type="button"
+                className="chat-conversation-section-toggle"
+                onClick={() => toggleSection('starred')}
+                aria-expanded={!collapsedSections.starred}
+              >
+                {collapsedSections.starred ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <span>Starred</span>
+              </button>
+              {!collapsedSections.starred &&
+                starredConversations.map((conversation) => (
+                  <ConversationButton
+                    key={`starred-${conversation.id}`}
+                    conversation={conversation}
+                    profileUid={profile?.uid}
+                    nameByUid={nameByUid}
+                    usersByUid={usersByUid}
+                    activity={conversationActivity.get(conversation.id)}
+                    unreadCount={resolveUnreadCount(
+                      conversation.id,
+                      conversationActivity.get(conversation.id),
+                    )}
+                    isActive={conversation.id === activeConversationId}
+                    isStarred
+                    isUserOnline={isUserOnline}
+                    onSelect={handleSelectConversation}
+                    onToggleStar={handleToggleStar}
+                  />
+                ))}
+            </section>
+          )}
+
+          {filteredEveryone.length > 0 && (
+            <section className="chat-conversation-section">
+              <button
+                type="button"
+                className="chat-conversation-section-toggle"
+                onClick={() => toggleSection('channels')}
+                aria-expanded={!collapsedSections.channels}
+              >
+                {collapsedSections.channels ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <span>Channels</span>
+              </button>
+              {!collapsedSections.channels &&
+                filteredEveryone.map((conversation) => (
                 <ConversationButton
                   key={conversation.id}
                   conversation={conversation}
@@ -405,19 +731,33 @@ function ChatPageContent() {
                   nameByUid={nameByUid}
                   usersByUid={usersByUid}
                   activity={conversationActivity.get(conversation.id)}
-                  unreadCount={getConversationUnreadCount(conversation.id)}
+                  unreadCount={resolveUnreadCount(
+                    conversation.id,
+                    conversationActivity.get(conversation.id),
+                  )}
                   isActive={conversation.id === activeConversationId}
+                  isStarred={starredIds.includes(conversation.id)}
                   isUserOnline={isUserOnline}
                   onSelect={handleSelectConversation}
+                  onToggleStar={handleToggleStar}
                 />
               ))}
             </section>
           )}
 
-          {groupConversations.length > 0 && (
+          {filteredGroups.length > 0 && (
             <section className="chat-conversation-section">
-              <p className="chat-conversation-section-label">Groups</p>
-              {groupConversations.map((conversation) => (
+              <button
+                type="button"
+                className="chat-conversation-section-toggle"
+                onClick={() => toggleSection('groups')}
+                aria-expanded={!collapsedSections.groups}
+              >
+                {collapsedSections.groups ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <span>Groups</span>
+              </button>
+              {!collapsedSections.groups &&
+                filteredGroups.map((conversation) => (
                 <ConversationButton
                   key={conversation.id}
                   conversation={conversation}
@@ -425,19 +765,33 @@ function ChatPageContent() {
                   nameByUid={nameByUid}
                   usersByUid={usersByUid}
                   activity={conversationActivity.get(conversation.id)}
-                  unreadCount={getConversationUnreadCount(conversation.id)}
+                  unreadCount={resolveUnreadCount(
+                    conversation.id,
+                    conversationActivity.get(conversation.id),
+                  )}
                   isActive={conversation.id === activeConversationId}
+                  isStarred={starredIds.includes(conversation.id)}
                   isUserOnline={isUserOnline}
                   onSelect={handleSelectConversation}
+                  onToggleStar={handleToggleStar}
                 />
               ))}
             </section>
           )}
 
-          {directConversations.length > 0 && (
+          {filteredDirect.length > 0 && (
             <section className="chat-conversation-section">
-              <p className="chat-conversation-section-label">Direct</p>
-              {directConversations.map((conversation) => (
+              <button
+                type="button"
+                className="chat-conversation-section-toggle"
+                onClick={() => toggleSection('direct')}
+                aria-expanded={!collapsedSections.direct}
+              >
+                {collapsedSections.direct ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <span>Direct messages</span>
+              </button>
+              {!collapsedSections.direct &&
+                filteredDirect.map((conversation) => (
                 <ConversationButton
                   key={conversation.id}
                   conversation={conversation}
@@ -445,10 +799,15 @@ function ChatPageContent() {
                   nameByUid={nameByUid}
                   usersByUid={usersByUid}
                   activity={conversationActivity.get(conversation.id)}
-                  unreadCount={getConversationUnreadCount(conversation.id)}
+                  unreadCount={resolveUnreadCount(
+                    conversation.id,
+                    conversationActivity.get(conversation.id),
+                  )}
                   isActive={conversation.id === activeConversationId}
+                  isStarred={starredIds.includes(conversation.id)}
                   isUserOnline={isUserOnline}
                   onSelect={handleSelectConversation}
+                  onToggleStar={handleToggleStar}
                 />
               ))}
             </section>
@@ -500,7 +859,7 @@ function ChatPageContent() {
                 connectionStatus === 'connected' && 'chat-connection-status-live',
                 connectionStatus === 'reconnecting' && 'chat-connection-status-reconnecting',
               )}
-              title={connectionStatusLabel(connectionStatus)}
+              aria-label={connectionStatusLabel(connectionStatus)}
             >
               <span className="chat-connection-dot" />
               <span className="chat-head-action-text">
@@ -508,12 +867,22 @@ function ChatPageContent() {
               </span>
             </span>
             {activeConversation && isEditableGroup(activeConversation) && (
-              <Button variant="ghost" size="sm" onClick={() => setShowMembersModal(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Manage group members"
+                onClick={() => setShowMembersModal(true)}
+              >
                 <Users size={15} />
                 <span className="chat-head-action-text">Members</span>
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={handleRefresh}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Refresh messages"
+              onClick={handleRefresh}
+            >
               <RefreshCw size={15} />
               <span className="chat-head-action-text">Refresh</span>
             </Button>
@@ -528,7 +897,15 @@ function ChatPageContent() {
           </div>
         )}
 
-        <div className="chat-messages" ref={messagesRef}>
+        <div
+          className="chat-messages"
+          ref={messagesRef}
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions"
+          aria-label="Messages"
+          onScroll={handleMessagesScroll}
+        >
           {loading ? (
             <div className="chat-loading">
               <div className="spinner" />
@@ -537,7 +914,7 @@ function ChatPageContent() {
           ) : messages.length === 0 ? (
             <div className="chat-empty-thread">
               <MessageCircle size={28} />
-              <p>No messages yet. Say hello.</p>
+              <p>{emptyThreadCopy}</p>
             </div>
           ) : (
             <ChatMessageList
@@ -548,19 +925,49 @@ function ChatPageContent() {
               mentionNames={mentionNames}
               hasMoreOlder={hasMoreOlder}
               loadingOlder={loadingOlder}
-              onLoadOlder={() => void loadOlderMessages()}
+              firstUnreadMessageId={firstUnreadId}
+              onLoadOlder={handleLoadOlder}
               onRetry={(messageId) => void retryMessage(messageId)}
             />
           )}
           <div ref={bottomRef} />
         </div>
 
+        {newMessagesBelow > 0 && (
+          <div className="chat-new-messages-banner-wrap">
+            <button
+              type="button"
+              className="chat-new-messages-banner"
+              onClick={() => scrollToBottom('smooth')}
+            >
+              ↓ {newMessagesBelow} new message{newMessagesBelow === 1 ? '' : 's'}
+            </button>
+          </div>
+        )}
+
         <ChatComposer
+          firebaseUid={profile?.uid}
+          conversationId={activeConversationId}
+          conversationLabel={composerLabel}
           disabled={!activeConversationId}
           mentionOptions={mentionOptions}
           onSend={handleSend}
         />
       </Card>
+
+      {showQuickSwitcher && profile?.uid && (
+        <ChatQuickSwitcher
+          conversations={sortedConversations}
+          profileUid={profile.uid}
+          nameByUid={nameByUid}
+          usersByUid={usersByUid}
+          conversationActivity={conversationActivity}
+          onSelect={(conversationId) => {
+            handleSelectConversation(conversationId);
+          }}
+          onClose={() => setShowQuickSwitcher(false)}
+        />
+      )}
 
       {showDirectModal && (
         <NewDirectModal
@@ -608,8 +1015,10 @@ function ConversationButton({
   activity,
   unreadCount,
   isActive,
+  isStarred,
   isUserOnline,
   onSelect,
+  onToggleStar,
 }: {
   conversation: ChatConversation;
   profileUid?: string;
@@ -618,8 +1027,10 @@ function ConversationButton({
   activity?: ConversationActivity;
   unreadCount: number;
   isActive: boolean;
+  isStarred: boolean;
   isUserOnline: (firebaseUid: string) => boolean;
   onSelect: (id: string) => void;
+  onToggleStar: (id: string) => void;
 }) {
   const title = profileUid
     ? getConversationTitle(conversation, profileUid, nameByUid)
@@ -632,42 +1043,52 @@ function ConversationButton({
       : undefined;
 
   return (
-    <button
-      type="button"
-      className={clsx(
-        'chat-conversation-item',
-        isActive && 'chat-conversation-item-active',
-        hasUnread && 'chat-conversation-item-unread',
-      )}
-      onClick={() => onSelect(conversation.id)}
-    >
-      <ConversationAvatar
-        conversation={conversation}
-        profileUid={profileUid}
-        usersByUid={usersByUid}
-        nameByUid={nameByUid}
-        showOnline={conversation.type === 'direct'}
-        isOnline={otherUid ? isUserOnline(otherUid) : false}
-      />
-      <span className="chat-conversation-copy">
-        <span className="chat-conversation-title-row">
-          <span className="chat-conversation-title">{title}</span>
-          {activity && (
+    <div className={clsx('chat-conversation-row', isActive && 'chat-conversation-row-active')}>
+      <button
+        type="button"
+        id={`chat-conversation-${conversation.id}`}
+        className={clsx(
+          'chat-conversation-item',
+          isActive && 'chat-conversation-item-active',
+          hasUnread && 'chat-conversation-item-unread',
+        )}
+        aria-label={hasUnread ? `${title}, ${unreadCount} unread` : title}
+        onClick={() => onSelect(conversation.id)}
+      >
+        <ConversationAvatar
+          conversation={conversation}
+          profileUid={profileUid}
+          usersByUid={usersByUid}
+          nameByUid={nameByUid}
+          showOnline={conversation.type === 'direct'}
+          isOnline={otherUid ? isUserOnline(otherUid) : false}
+        />
+        <span className="chat-conversation-copy">
+          {activity && !hasUnread && (
             <span className="chat-conversation-time">
               {formatSidebarTimestamp(activity.lastMessageAt)}
             </span>
           )}
+          <span className="chat-conversation-title">{title}</span>
+          <span className={clsx('chat-conversation-preview', hasUnread && 'chat-conversation-preview-unread')}>
+            {preview}
+          </span>
+          {hasUnread ? (
+            <span className="chat-conversation-unread-badge">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          ) : null}
         </span>
-        <span className={clsx('chat-conversation-preview', hasUnread && 'chat-conversation-preview-unread')}>
-          {preview}
-        </span>
-      </span>
-      {hasUnread ? (
-        <span className="chat-conversation-unread-badge">
-          {unreadCount > 99 ? '99+' : unreadCount}
-        </span>
-      ) : null}
-    </button>
+      </button>
+      <button
+        type="button"
+        className={clsx('chat-conversation-star', isStarred && 'chat-conversation-star-active')}
+        aria-label={isStarred ? 'Unstar conversation' : 'Star conversation'}
+        onClick={() => onToggleStar(conversation.id)}
+      >
+        <Star size={14} fill={isStarred ? 'currentColor' : 'none'} />
+      </button>
+    </div>
   );
 }
 

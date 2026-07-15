@@ -8,6 +8,7 @@ import {
   Sun,
   User,
   MessageCircle,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -16,6 +17,7 @@ import { Button } from '../components/ui/Button';
 import { ThemePicker } from '../components/settings/ThemePicker';
 import { ProfilePhotoEditor } from '../components/settings/ProfilePhotoEditor';
 import { SupabaseChatSetup } from '../components/settings/SupabaseChatSetup';
+import { RolePermissionsEditor } from '../components/settings/RolePermissionsEditor';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { CurrencySelect } from '../components/ui/CurrencySelect';
@@ -23,7 +25,13 @@ import { COMPANY_SHARE_RATE } from '../lib/constants';
 import { getRoleLabel } from '../lib/permissions';
 import { clsx } from '../lib/utils';
 
-type SettingsSection = 'account' | 'currency' | 'appearance' | 'chat' | 'rules';
+type SettingsSection =
+  | 'account'
+  | 'currency'
+  | 'appearance'
+  | 'access'
+  | 'chat'
+  | 'rules';
 
 const SECTIONS: {
   id: SettingsSection;
@@ -34,6 +42,7 @@ const SECTIONS: {
   { id: 'account', label: 'Account', icon: User },
   { id: 'currency', label: 'Currency', icon: Coins },
   { id: 'appearance', label: 'Appearance', icon: Sun },
+  { id: 'access', label: 'Role Access', icon: KeyRound, adminOnly: true },
   { id: 'chat', label: 'Team Chat', icon: MessageCircle, adminOnly: true },
   { id: 'rules', label: 'Business Rules', icon: ScrollText },
 ];
@@ -135,9 +144,11 @@ export function SettingsPage() {
                   ? 'Display currency and USD → PKR conversion'
                   : activeSection === 'appearance'
                     ? 'Theme and visual preferences'
-                    : activeSection === 'chat'
-                      ? 'Supabase setup for team chat'
-                      : 'How OfficeEx calculates and shares data'
+                    : activeSection === 'access'
+                      ? 'Pages and features available to each role'
+                      : activeSection === 'chat'
+                        ? 'Supabase setup for team chat'
+                        : 'How OfficeEx calculates and shares data'
             }
           />
 
@@ -249,6 +260,12 @@ export function SettingsPage() {
           {activeSection === 'appearance' && (
             <div className="settings-section">
               <ThemePicker />
+            </div>
+          )}
+
+          {activeSection === 'access' && isAdmin && (
+            <div className="settings-section">
+              <RolePermissionsEditor />
             </div>
           )}
 

@@ -29,8 +29,10 @@
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
     "employeePayslips": {
-      ".read": "auth != null",
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')"
+      "$employeeId": {
+        ".read": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer' || (root.child('users').child(auth.uid).child('role').val() === 'employee' && root.child('users').child(auth.uid).child('employeeId').val() === $employeeId && root.child('users').child(auth.uid).child('accountStatus').val() === 'verified'))",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'viewer')"
+      }
     },
     "employeeAttendance": {
       ".read": "auth != null",
@@ -50,7 +52,12 @@
     },
     "settings": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      "usdToPkr": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      },
+      "rolePermissions": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      }
     }
   }
 }

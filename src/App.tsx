@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { RolePermissionsProvider } from './context/RolePermissionsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { FilterProvider } from './context/FilterContext';
 import { CurrencyProvider } from './context/CurrencyContext';
@@ -43,7 +44,8 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <AuthProvider>
+      <RolePermissionsProvider>
+        <AuthProvider>
         <CurrencyProvider>
           <FilterProvider>
           <Router>
@@ -83,7 +85,8 @@ export default function App() {
           </Router>
           </FilterProvider>
         </CurrencyProvider>
-      </AuthProvider>
+        </AuthProvider>
+      </RolePermissionsProvider>
     </ThemeProvider>
   );
 }

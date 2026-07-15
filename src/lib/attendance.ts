@@ -105,3 +105,14 @@ export function buildMonthDayKeys(year: number, month: number): string[] {
     return `${year}-${monthKey}-${day}`;
   });
 }
+
+export function isTodayDateKey(dateKey: string, now = new Date()): boolean {
+  return dateKey === formatAttendanceDateKey(now);
+}
+
+export function canEmployeeSelfMarkAttendanceDate(
+  dateKey: string,
+  now = new Date(),
+): boolean {
+  return isTodayDateKey(dateKey, now);
+}

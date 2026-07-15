@@ -32,9 +32,15 @@ const STATUS_OPTIONS: Array<{
 interface AttendancePanelProps {
   employeeId: string;
   readOnly?: boolean;
+  /** When true, employees can only view history and mark today. */
+  restrictToToday?: boolean;
 }
 
-export function AttendancePanel({ employeeId, readOnly = false }: AttendancePanelProps) {
+export function AttendancePanel({
+  employeeId,
+  readOnly = false,
+  restrictToToday = false,
+}: AttendancePanelProps) {
   const { user } = useAuth();
   const { records, loading, error, markAttendance } = useEmployeeAttendance(employeeId);
   const today = new Date();
@@ -79,6 +85,10 @@ export function AttendancePanel({ employeeId, readOnly = false }: AttendancePane
   }, [records, today]);
 
   const handleSelectDate = (dateKey: string) => {
+    if (restrictToToday && dateKey !== todayKey) {
+      return;
+    }
+
     setSelectedDate(dateKey);
     const existing = recordByDate.get(dateKey);
     setStatus(existing?.status ?? 'present');
@@ -96,7 +106,9 @@ export function AttendancePanel({ employeeId, readOnly = false }: AttendancePane
     setSuccess('');
 
     try {
-      await markAttendance(selectedDate, status, user.uid, note);
+      await markAttendance(selectedDate, status, user.uid, note, {
+        todayOnly: restrictToToday,
+      });
       setSuccess(`Attendance saved for ${selectedDate}.`);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Could not save attendance.');
@@ -168,6 +180,8 @@ export function AttendancePanel({ employeeId, readOnly = false }: AttendancePane
             const isSelected = selectedDate === dateKey;
             const isToday = dateKey === todayKey;
             const isFuture = dateKey > todayKey;
+            const isPast = dateKey < todayKey;
+            const isLockedForEmployee = restrictToToday && dateKey !== todayKey;
 
             return (
               <button
@@ -179,9 +193,15 @@ export function AttendancePanel({ employeeId, readOnly = false }: AttendancePane
                   isSelected && 'attendance-day-selected',
                   isToday && 'attendance-day-today',
                   isFuture && 'attendance-day-future',
+                  isPast && restrictToToday && 'attendance-day-past',
                 )}
                 onClick={() => handleSelectDate(dateKey)}
-                disabled={isFuture}
+                disabled={isFuture || isLockedForEmployee}
+                title={
+                  isLockedForEmployee
+                    ? 'Only today can be updated'
+                    : undefined
+                }
               >
                 <span className="attendance-day-number">{parsed?.day}</span>
                 <span className="attendance-day-status">
@@ -197,8 +217,17 @@ export function AttendancePanel({ employeeId, readOnly = false }: AttendancePane
         <Card className="attendance-form-card">
           <CardHeader
             title="Mark attendance"
-            subtitle={`Selected date: ${selectedDate}`}
+            subtitle={
+              restrictToToday
+                ? `Today only: ${todayKey}`
+                : `Selected date: ${selectedDate}`
+            }
           />
+          {restrictToToday && selectedDate !== todayKey && (
+            <p className="attendance-restriction-note">
+              Attendance can only be marked for today. Past days are read-only.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="attendance-form">
             <div className="attendance-status-options">
               {STATUS_OPTIONS.map(({ value, label, icon: Icon }) => (
@@ -225,7 +254,14 @@ export function AttendancePanel({ employeeId, readOnly = false }: AttendancePane
             />
             {formError && <p className="form-error">{formError}</p>}
             {success && <p className="form-success">{success}</p>}
-            <Button type="submit" disabled={submitting || selectedDate > todayKey}>
+            <Button
+              type="submit"
+              disabled={
+                submitting ||
+                selectedDate > todayKey ||
+                (restrictToToday && selectedDate !== todayKey)
+              }
+            >
               <CalendarCheck2 size={16} />
               {submitting ? 'Saving...' : 'Save attendance'}
             </Button>

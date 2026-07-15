@@ -34,6 +34,7 @@ import {
   requestDesktopNotificationPermission,
   showDesktopNotification,
 } from '../lib/browser-notifications';
+import { setConversationLastRead } from '../lib/chat-unread';
 import type { ChatConversation, ChatMessage, ChatNotification } from '../types';
 
 export interface ChatToast {
@@ -56,7 +57,7 @@ interface ChatNotificationContextValue {
   refreshNotifications: () => Promise<void>;
   markRead: (notificationId: string) => Promise<void>;
   markAllRead: () => Promise<void>;
-  markConversationRead: (conversationId: string) => Promise<void>;
+  markConversationRead: (conversationId: string, readAt?: number) => Promise<void>;
   openNotification: (notification: ChatNotification) => void;
   dismissToast: (toastId: string) => void;
   setViewingConversationId: (conversationId: string | null) => void;
@@ -186,8 +187,10 @@ export function ChatNotificationProvider({
   }, [firebaseUid]);
 
   const markConversationRead = useCallback(
-    async (conversationId: string) => {
+    async (conversationId: string, readAt?: number) => {
       if (!firebaseUid) return;
+
+      setConversationLastRead(firebaseUid, conversationId, readAt ?? Date.now());
 
       setNotifications((current) =>
         current.map((notification) =>

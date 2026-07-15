@@ -5,6 +5,7 @@ import { useChatNotifications } from '../../context/ChatNotificationContext';
 import { formatChatTime } from '../../lib/datetime';
 import { clsx } from '../../lib/utils';
 import { Button } from '../ui/Button';
+import { Tooltip } from '../ui/Tooltip';
 
 export function ChatNotificationBell() {
   const {
@@ -37,24 +38,26 @@ export function ChatNotificationBell() {
 
   return (
     <div className="chat-notif-bell" ref={panelRef}>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((current) => !current);
-          if (!open) {
-            void refreshNotifications();
-          }
-        }}
-        className="chat-notif-bell-btn"
-      >
-        <Bell size={18} />
-        {unreadCount > 0 && (
-          <span className="chat-notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
-        )}
-      </Button>
+      <Tooltip label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+          aria-expanded={open}
+          onClick={() => {
+            setOpen((current) => !current);
+            if (!open) {
+              void refreshNotifications();
+            }
+          }}
+          className="chat-notif-bell-btn"
+        >
+          <Bell size={18} />
+          {unreadCount > 0 && (
+            <span className="chat-notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+          )}
+        </Button>
+      </Tooltip>
 
       {open && (
         <div className="chat-notif-panel">
@@ -62,14 +65,17 @@ export function ChatNotificationBell() {
             <h3>Notifications</h3>
             <div className="chat-notif-panel-actions">
               {unreadCount > 0 && (
-                <button
-                  type="button"
-                  className="chat-notif-mark-all"
-                  onClick={() => void markAllRead()}
-                >
-                  <CheckCheck size={14} />
-                  Mark all read
-                </button>
+                <Tooltip label="Mark all notifications as read">
+                  <button
+                    type="button"
+                    className="chat-notif-mark-all"
+                    aria-label="Mark all notifications as read"
+                    onClick={() => void markAllRead()}
+                  >
+                    <CheckCheck size={14} />
+                    Mark all read
+                  </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -127,16 +133,19 @@ export function ChatNotificationBell() {
           </ul>
 
           <div className="chat-notif-panel-foot">
-            <button
-              type="button"
-              className="chat-notif-open-chat"
-              onClick={() => {
-                navigate('/chat');
-                setOpen(false);
-              }}
-            >
-              Open Messages
-            </button>
+            <Tooltip label="Go to Messages">
+              <button
+                type="button"
+                className="chat-notif-open-chat"
+                aria-label="Open Messages"
+                onClick={() => {
+                  navigate('/chat');
+                  setOpen(false);
+                }}
+              >
+                Open Messages
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}
