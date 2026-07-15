@@ -17,7 +17,52 @@ export function OwnerPayablesCard({ payables, compact }: OwnerPayablesCardProps)
         title="Payables"
         subtitle={`${COMPANY_SHARE_RATE * 100}% company share minus owner expenses · ${displayCurrency}`}
       />
-      <div className="table-wrapper">
+
+      <div className="overview-payables-mobile" aria-label="Payables">
+        {payables.length === 0 ? (
+          <p className="overview-empty">No payable records for this period</p>
+        ) : (
+          payables.map((payable) => (
+            <article key={payable.ownerId} className="overview-payable-item">
+              <p className="overview-payable-name">{payable.ownerName}</p>
+              <dl className="overview-payable-rows">
+                <div className="overview-payable-row">
+                  <dt>Gross income</dt>
+                  <dd>{formatDisplay(payable.grossIncome)}</dd>
+                </div>
+                <div className="overview-payable-row">
+                  <dt>Company share ({COMPANY_SHARE_RATE * 100}%)</dt>
+                  <dd className="text-accent">{formatDisplay(payable.companyShareDue)}</dd>
+                </div>
+                <div className="overview-payable-row">
+                  <dt>Owner expenses</dt>
+                  <dd className="text-danger">{formatDisplay(payable.ownerExpenses)}</dd>
+                </div>
+                <div className="overview-payable-row overview-payable-row-highlight">
+                  <dt>Net payable</dt>
+                  <dd
+                    className={
+                      payable.netPayableToCompany > 0
+                        ? 'text-warning payable-highlight'
+                        : 'text-success'
+                    }
+                  >
+                    {formatDisplay(payable.netPayableToCompany)}
+                  </dd>
+                </div>
+                {!compact && (
+                  <div className="overview-payable-row">
+                    <dt>Owner retained</dt>
+                    <dd>{formatDisplay(payable.ownerRetained)}</dd>
+                  </div>
+                )}
+              </dl>
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="table-wrapper overview-payables-table">
         <table className="data-table payables-table">
           <thead>
             <tr>

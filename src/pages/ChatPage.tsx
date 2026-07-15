@@ -503,17 +503,19 @@ function ChatPageContent() {
               title={connectionStatusLabel(connectionStatus)}
             >
               <span className="chat-connection-dot" />
-              {connectionStatusLabel(connectionStatus)}
+              <span className="chat-head-action-text">
+                {connectionStatusLabel(connectionStatus)}
+              </span>
             </span>
             {activeConversation && isEditableGroup(activeConversation) && (
               <Button variant="ghost" size="sm" onClick={() => setShowMembersModal(true)}>
                 <Users size={15} />
-                Members
+                <span className="chat-head-action-text">Members</span>
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={handleRefresh}>
               <RefreshCw size={15} />
-              Refresh
+              <span className="chat-head-action-text">Refresh</span>
             </Button>
           </div>
         </div>
